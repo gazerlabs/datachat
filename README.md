@@ -22,6 +22,7 @@ Open-source, AI-powered analytics. Connect a data warehouse (or upload a file), 
 - [Features](#features)
 - [Screenshots](#screenshots)
 - [Quickstart](#quickstart)
+- [Setting up the LLM API key (Anthropic)](#setting-up-the-llm-api-key-anthropic)
 - [Setting up authentication (Clerk)](#setting-up-authentication-clerk)
 - [Architecture](#architecture)
 - [Modular customization](#modular-customization)
@@ -152,6 +153,42 @@ npm run dev
 ```
 
 Visit http://localhost:8080. With `DISABLE_AUTH=true` you'll be signed in as a built-in `dev_user`.
+
+## Setting up the LLM API key (Anthropic)
+
+Datachat is built on Anthropic's Claude — **you bring your own API key**. There's no shared key shipped with this distribution; Anthropic bills you directly for token usage.
+
+### 1. Get an Anthropic API key
+
+1. Sign up at [console.anthropic.com](https://console.anthropic.com).
+2. Add a payment method and load credits. Anthropic doesn't offer a free tier for the API, but $5 of prepaid credits is enough for thousands of test queries against Sonnet.
+3. Open **API Keys** in the left nav → **Create Key** → copy the value (starts with `sk-ant-...`).
+
+### 2. Wire it into the backend
+
+Edit `backend/.env`:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Restart the backend. The key isn't validated at startup — it's used on the first chat request, so a typo will fail loudly when you actually ask a question rather than at boot.
+
+### 3. Choose models (optional)
+
+The default model is **Sonnet 4.6**. To add, remove, or change the default, edit the `MODELS` dict in [`backend/app/core/config.py`](backend/app/core/config.py):
+
+```python
+MODELS: dict[str, ModelConfig] = {
+    "claude-sonnet-4-6": {"display_name": "Sonnet 4.6", "input_price": 3,  "output_price": 15},
+    "claude-opus-4-7":   {"display_name": "Opus 4.7",   "input_price": 15, "output_price": 75},
+}
+DEFAULT_MODEL = "claude-sonnet-4-6"
+```
+
+`GET /api/models` returns this dict to the frontend, so the model picker updates without a frontend redeploy. The same dict drives `ALLOWED_MODELS` and the per-token pricing shown on `/usage`.
+
+To swap Anthropic for a different LLM provider entirely (OpenAI, local Ollama, etc.), the chat orchestration lives in [`backend/app/services/chat_service.py`](backend/app/services/chat_service.py) and uses the Anthropic SDK with tool use. Replacing it is non-trivial — different providers have different tool-use semantics — but the contract is well-isolated. PRs welcome.
 
 ## Setting up authentication (Clerk)
 
