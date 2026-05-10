@@ -550,7 +550,7 @@ The pattern: anywhere your data team already documents semantics (dbt docs, BI t
 |                                     | **Self-host**                       | **Hosted (Gazer Labs)**            |
 |-------------------------------------|-------------------------------------|------------------------------------|
 | Source code                         | Apache 2.0, fork freely             | Same code, run by us               |
-| Cost                                | Your infra (Railway / Fly / etc.)   | Free tier; paid tiers from $99/mo  |
+| Cost                                | Your infra (Railway / Fly / etc.)   | Free tier; paid tiers from $299/mo  |
 | Anthropic API key                   | Bring your own                      | Included                            |
 | Demo data                           | Optional (set MotherDuck env vars)  | Pre-attached on signup              |
 | Auth                                | Clerk, or swap for any JWT provider | Clerk                               |
