@@ -67,8 +67,6 @@ Datachat lets non-technical users query their data warehouse by typing questions
 
 ## Screenshots
 
-> Captured against the auto-attached **Demo: RetailFlow** warehouse on the dark `midnight-ocean` theme. See [`screenshots/README.md`](screenshots/README.md) for capture conventions.
-
 ### Chat — natural-language SQL with inline charts
 
 <img width="1512" height="854" alt="Screenshot 2026-05-10 at 11 26 07 AM" src="https://github.com/user-attachments/assets/450e16fc-87e1-4d66-9fb3-37469ad037b3" /> 
