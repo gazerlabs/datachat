@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 from typing import Optional
 
 import httpx
@@ -16,6 +17,18 @@ from app.connections.base import (
 )
 
 logger = logging.getLogger("warehouse_executor")
+
+# BigQuery dataset / table / project IDs are constrained to letters, digits,
+# underscores, and (for tables) dashes. We get these from caller-supplied tool
+# arguments and embed them directly in REST URL paths, so reject anything that
+# could break out of the path segment (e.g. "..", "/", "?").
+_SAFE_BQ_IDENTIFIER = re.compile(r"\A[A-Za-z0-9_\-]+\Z")
+
+
+def _check_bq_identifier(name: str, *, kind: str) -> str:
+    if not name or not _SAFE_BQ_IDENTIFIER.fullmatch(name):
+        raise ValueError(f"Invalid BigQuery {kind} identifier: {name!r}")
+    return name
 
 
 def get_bigquery_access_token(credentials_json: str) -> Optional[str]:
@@ -130,8 +143,9 @@ class BigQueryExecutor(WarehouseExecutor):
         return tabulate(rows, headers=["dataset_id"], tablefmt="pretty")
 
     async def list_tables(self, dataset: str) -> str:
+        safe_dataset = _check_bq_identifier(dataset, kind="dataset")
         token = self._get_token()
-        url = f"https://bigquery.googleapis.com/bigquery/v2/projects/{self._project_id}/datasets/{dataset}/tables"
+        url = f"https://bigquery.googleapis.com/bigquery/v2/projects/{self._project_id}/datasets/{safe_dataset}/tables"
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
             resp.raise_for_status()
@@ -142,8 +156,10 @@ class BigQueryExecutor(WarehouseExecutor):
         return tabulate(rows, headers=["table_id", "type"], tablefmt="pretty")
 
     async def get_table_schema(self, dataset: str, table: str) -> str:
+        safe_dataset = _check_bq_identifier(dataset, kind="dataset")
+        safe_table = _check_bq_identifier(table, kind="table")
         token = self._get_token()
-        url = f"https://bigquery.googleapis.com/bigquery/v2/projects/{self._project_id}/datasets/{dataset}/tables/{table}"
+        url = f"https://bigquery.googleapis.com/bigquery/v2/projects/{self._project_id}/datasets/{safe_dataset}/tables/{safe_table}"
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
             resp.raise_for_status()

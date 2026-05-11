@@ -29,9 +29,9 @@ class MotherDuckExecutor(WarehouseExecutor):
             self._conn = duckdb.connect(db_path)
         return self._conn
 
-    def _run_query(self, sql: str) -> str:
+    def _run_query(self, sql: str, params: tuple | None = None) -> str:
         conn = self._get_connection()
-        q = conn.execute(sql)
+        q = conn.execute(sql, params) if params is not None else conn.execute(sql)
         rows = q.fetchmany(MAX_ROWS)
         has_more = q.fetchone() is not None
         headers = [d[0] for d in q.description]
@@ -46,9 +46,9 @@ class MotherDuckExecutor(WarehouseExecutor):
 
         return out
 
-    def _run_query_raw(self, sql: str) -> list[tuple]:
+    def _run_query_raw(self, sql: str, params: tuple | None = None) -> list[tuple]:
         conn = self._get_connection()
-        q = conn.execute(sql)
+        q = conn.execute(sql, params) if params is not None else conn.execute(sql)
         return q.fetchall()
 
     async def connect(self) -> None:
@@ -76,22 +76,28 @@ class MotherDuckExecutor(WarehouseExecutor):
         )
 
     async def list_tables(self, dataset: str) -> str:
-        sql = f"SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_catalog = '{dataset}' ORDER BY table_schema, table_name"
-        return await asyncio.to_thread(self._run_query, sql)
+        sql = (
+            "SELECT table_schema, table_name, table_type FROM information_schema.tables "
+            "WHERE table_catalog = ? ORDER BY table_schema, table_name"
+        )
+        return await asyncio.to_thread(self._run_query, sql, (dataset,))
 
     async def get_table_schema(self, dataset: str, table: str) -> str:
-        sql = f"SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '{table}' AND table_catalog = '{dataset}' ORDER BY ordinal_position"
-        return await asyncio.to_thread(self._run_query, sql)
+        sql = (
+            "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
+            "WHERE table_name = ? AND table_catalog = ? ORDER BY ordinal_position"
+        )
+        return await asyncio.to_thread(self._run_query, sql, (table, dataset))
 
     async def get_schema_summary(self) -> str:
         try:
             sql = (
                 "SELECT table_schema, table_name, column_name, data_type "
                 "FROM information_schema.columns "
-                f"WHERE table_catalog = '{self._database}' "
+                "WHERE table_catalog = ? "
                 "ORDER BY table_schema, table_name, ordinal_position"
             )
-            rows = await asyncio.to_thread(self._run_query_raw, sql)
+            rows = await asyncio.to_thread(self._run_query_raw, sql, (self._database,))
             return format_schema_summary(rows, self._database)
         except Exception as e:
             logger.warning(f"MotherDuck schema summary failed: {e}")

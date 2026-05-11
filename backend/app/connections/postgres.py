@@ -41,11 +41,14 @@ class PostgreSQLExecutor(WarehouseExecutor):
             self._conn.autocommit = True
         return self._conn
 
-    def _run_query(self, sql: str) -> str:
+    def _run_query(self, sql: str, params: tuple | None = None) -> str:
         conn = self._get_connection()
         cur = conn.cursor()
         try:
-            cur.execute(sql)
+            if params is None:
+                cur.execute(sql)
+            else:
+                cur.execute(sql, params)
             if cur.description is None:
                 return "Query executed successfully (no results)."
             rows = cur.fetchmany(MAX_ROWS)
@@ -64,11 +67,14 @@ class PostgreSQLExecutor(WarehouseExecutor):
 
         return out
 
-    def _run_query_raw(self, sql: str) -> list[tuple]:
+    def _run_query_raw(self, sql: str, params: tuple | None = None) -> list[tuple]:
         conn = self._get_connection()
         cur = conn.cursor()
         try:
-            cur.execute(sql)
+            if params is None:
+                cur.execute(sql)
+            else:
+                cur.execute(sql, params)
             return cur.fetchall()
         finally:
             cur.close()
@@ -104,18 +110,18 @@ class PostgreSQLExecutor(WarehouseExecutor):
 
     async def list_tables(self, dataset: str) -> str:
         sql = (
-            f"SELECT table_schema, table_name, table_type FROM information_schema.tables "
-            f"WHERE table_schema = '{dataset}' ORDER BY table_name"
+            "SELECT table_schema, table_name, table_type FROM information_schema.tables "
+            "WHERE table_schema = %s ORDER BY table_name"
         )
-        return await asyncio.to_thread(self._run_query, sql)
+        return await asyncio.to_thread(self._run_query, sql, (dataset,))
 
     async def get_table_schema(self, dataset: str, table: str) -> str:
         sql = (
-            f"SELECT column_name, data_type, is_nullable FROM information_schema.columns "
-            f"WHERE table_schema = '{dataset}' AND table_name = '{table}' "
-            f"ORDER BY ordinal_position"
+            "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
+            "WHERE table_schema = %s AND table_name = %s "
+            "ORDER BY ordinal_position"
         )
-        return await asyncio.to_thread(self._run_query, sql)
+        return await asyncio.to_thread(self._run_query, sql, (dataset, table))
 
     async def get_schema_summary(self) -> str:
         try:

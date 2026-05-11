@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 
 from tabulate import tabulate
 
@@ -10,6 +11,17 @@ from app.connections.base import (
     MAX_ROWS, MAX_CHARS,
 )
 from app.core.config import WAREHOUSE_QUERY_TIMEOUT_SECONDS
+
+# Snowflake SHOW statements take identifiers, not bind parameters, so we can't
+# parameterize them. Restrict to ASCII letters/digits/underscore/dot (enough for
+# unquoted db.schema.table) and refuse anything else.
+_SAFE_IDENTIFIER = re.compile(r"\A[A-Za-z0-9_.]+\Z")
+
+
+def _check_identifier(name: str, *, kind: str) -> str:
+    if not name or not _SAFE_IDENTIFIER.fullmatch(name):
+        raise ValueError(f"Invalid {kind} identifier: {name!r}")
+    return name
 
 logger = logging.getLogger("warehouse_executor")
 
@@ -96,16 +108,22 @@ class SnowflakeExecutor(WarehouseExecutor):
         return await asyncio.to_thread(self._run_query, "SHOW DATABASES")
 
     async def list_tables(self, dataset: str) -> str:
-        return await asyncio.to_thread(self._run_query, f"SHOW TABLES IN DATABASE {dataset}")
+        safe_dataset = _check_identifier(dataset, kind="dataset")
+        return await asyncio.to_thread(self._run_query, f"SHOW TABLES IN DATABASE {safe_dataset}")
 
     async def get_table_schema(self, dataset: str, table: str) -> str:
-        return await asyncio.to_thread(self._run_query, f"SHOW COLUMNS IN TABLE {dataset}.{table}")
+        safe_dataset = _check_identifier(dataset, kind="dataset")
+        safe_table = _check_identifier(table, kind="table")
+        return await asyncio.to_thread(
+            self._run_query, f"SHOW COLUMNS IN TABLE {safe_dataset}.{safe_table}"
+        )
 
     async def get_schema_summary(self) -> str:
         try:
+            safe_database = _check_identifier(self._database, kind="database")
             sql = (
                 f"SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE "
-                f"FROM {self._database}.INFORMATION_SCHEMA.COLUMNS "
+                f"FROM {safe_database}.INFORMATION_SCHEMA.COLUMNS "
                 f"WHERE TABLE_SCHEMA != 'INFORMATION_SCHEMA' "
                 f"ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION"
             )

@@ -122,11 +122,14 @@ class RedshiftExecutor(WarehouseExecutor):
             logger.debug("Failed to set statement_timeout on Redshift connection", exc_info=True)
         return self._conn
 
-    def _run_query(self, sql: str) -> str:
+    def _run_query(self, sql: str, params: tuple | None = None) -> str:
         conn = self._get_connection()
         cur = conn.cursor()
         try:
-            cur.execute(sql)
+            if params is None:
+                cur.execute(sql)
+            else:
+                cur.execute(sql, params)
             if cur.description is None:
                 return "Query executed successfully (no results)."
             rows = cur.fetchmany(MAX_ROWS)
@@ -145,11 +148,14 @@ class RedshiftExecutor(WarehouseExecutor):
 
         return out
 
-    def _run_query_raw(self, sql: str) -> list[tuple]:
+    def _run_query_raw(self, sql: str, params: tuple | None = None) -> list[tuple]:
         conn = self._get_connection()
         cur = conn.cursor()
         try:
-            cur.execute(sql)
+            if params is None:
+                cur.execute(sql)
+            else:
+                cur.execute(sql, params)
             return cur.fetchall()
         finally:
             cur.close()
@@ -188,18 +194,18 @@ class RedshiftExecutor(WarehouseExecutor):
     async def list_tables(self, dataset: str) -> str:
         sql = (
             "SELECT DISTINCT schemaname AS table_schema, tablename AS table_name, 'TABLE' AS table_type "
-            f"FROM pg_table_def WHERE schemaname = '{dataset}' "
+            "FROM pg_table_def WHERE schemaname = %s "
             "ORDER BY table_name"
         )
-        return await asyncio.to_thread(self._run_query, sql)
+        return await asyncio.to_thread(self._run_query, sql, (dataset,))
 
     async def get_table_schema(self, dataset: str, table: str) -> str:
         sql = (
             "SELECT \"column\" AS column_name, type AS data_type, notnull "
-            f"FROM pg_table_def WHERE schemaname = '{dataset}' AND tablename = '{table}' "
+            "FROM pg_table_def WHERE schemaname = %s AND tablename = %s "
             "ORDER BY \"column\""
         )
-        return await asyncio.to_thread(self._run_query, sql)
+        return await asyncio.to_thread(self._run_query, sql, (dataset, table))
 
     async def get_schema_summary(self) -> str:
         try:
