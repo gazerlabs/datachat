@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,7 +10,9 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from app.core.config import ALLOWED_ORIGINS, DISABLE_AUTH
+from app.core.config import (
+    ALLOWED_ORIGINS, DATABASE_URL, DISABLE_AUTH, LOCAL_DUCKDB_DIR,
+)
 from app.core.rate_limit import limiter
 from app.api import health, warehouses, conversations, feedback, usage, admin, account, demo, visualizations, salesforce, files, changelog, context, integrations, local_duckdb, reports, organization
 from app.services import scheduler_service
@@ -32,8 +35,38 @@ if _CORS_ALLOWS_WILDCARD and not DISABLE_AUTH:
 _CORS_ALLOW_CREDENTIALS = not _CORS_ALLOWS_WILDCARD
 
 
+def _check_runtime_config() -> None:
+    """Warn on operational footguns that are easy to miss in production deploys.
+
+    Loud-but-non-fatal so dev / local-only deployments still boot. Anyone
+    running real traffic should see these in the logs on first start."""
+    likely_prod = not DISABLE_AUTH
+
+    if likely_prod and DATABASE_URL.startswith("sqlite"):
+        logger.warning(
+            "DATABASE_URL is SQLite (%s). SQLite serializes writes via a global "
+            "file lock — a multi-worker deployment (uvicorn --workers >1) will "
+            "see intermittent 'database is locked' errors. Use Postgres for "
+            "any deployment running real traffic.",
+            DATABASE_URL,
+        )
+
+    if not os.path.isabs(LOCAL_DUCKDB_DIR):
+        # In a container without a mounted volume at this path, uploads land
+        # inside the image's writable layer and vanish on restart. Absolute
+        # paths almost always mean a real mounted volume.
+        logger.warning(
+            "LOCAL_DUCKDB_DIR=%r is a relative path. In a containerized "
+            "deployment without a volume mounted here, uploaded files will "
+            "disappear on container restart. Set LOCAL_DUCKDB_DIR to an "
+            "absolute path on a persistent volume (e.g. /data/local_duckdb).",
+            LOCAL_DUCKDB_DIR,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _check_runtime_config()
     scheduler_service.start_scheduler()
     try:
         yield

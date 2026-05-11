@@ -249,6 +249,8 @@ When you're ready to deploy:
 - Set the same `CLERK_*` env vars on your backend host (Railway / Fly / Render / Docker / etc.) and `VITE_CLERK_PUBLISHABLE_KEY` on your frontend host.
 - Verify `/sign-in` and `/sign-up` end-to-end against the production app *before* sharing the URL internally.
 
+> **BigQuery warehouses store a service-account key in the database.** The connection flow accepts a service-account JSON, encrypts it with `ENCRYPTION_KEY`, and stores the ciphertext in `warehouse_connections.credentials_encrypted`. If both your DB backup and the `ENCRYPTION_KEY` are ever compromised, the attacker gets full access to whatever GCP scopes the service account has. For sensitive deployments, scope the service account narrowly (read-only on the specific datasets you intend to query), or wire BigQuery through Workload Identity instead of a long-lived key.
+
 If you'd rather use a different auth provider (Auth0, Supabase Auth, Firebase, custom JWT), see [Replacing the auth provider (Clerk)](#replacing-the-auth-provider-clerk) below — Clerk is contained to a few files and the swap is straightforward.
 
 ## Architecture
