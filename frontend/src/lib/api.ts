@@ -9,35 +9,52 @@ export class ApiError extends Error {
   }
 }
 
-async function getAuthToken(): Promise<string | null> {
-  // Get token from Clerk
-  const clerkToken = await window.Clerk?.session?.getToken();
+async function getAuthToken(forceRefresh = false): Promise<string | null> {
+  // Get token from Clerk. forceRefresh=true bypasses Clerk's in-memory cache
+  // and asks for a freshly minted token — used on 401 to recover from a token
+  // that expired between Clerk handing it to us and the request reaching the
+  // backend.
+  const opts = forceRefresh ? { skipCache: true } : undefined;
+  const clerkToken = await window.Clerk?.session?.getToken(opts);
   return clerkToken || null;
 }
 
-async function fetchWithAuth(endpoint: string, options: RequestInit = {}, signal?: AbortSignal) {
-  const token = await getAuthToken();
-
-  if (import.meta.env.DEV) {
-    console.log(`[API] ${options.method || 'GET'} ${API_URL}${endpoint}`);
-    console.log(`[API] Auth token: ${token ? 'present' : 'missing'}`);
-  }
+async function _sendAuthedFetch(
+  endpoint: string,
+  options: RequestInit,
+  signal: AbortSignal | undefined,
+  forceRefresh: boolean,
+): Promise<Response> {
+  const token = await getAuthToken(forceRefresh);
 
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     ...options.headers,
   };
-
   if (token) {
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
 
+  return fetch(`${API_URL}${endpoint}`, { ...options, headers, signal });
+}
+
+async function fetchWithAuth(endpoint: string, options: RequestInit = {}, signal?: AbortSignal) {
+  if (import.meta.env.DEV) {
+    console.log(`[API] ${options.method || 'GET'} ${API_URL}${endpoint}`);
+  }
+
   try {
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      ...options,
-      headers,
-      signal,
-    });
+    let response = await _sendAuthedFetch(endpoint, options, signal, false);
+
+    // Recover from a stale cached token: on 401, ask Clerk for a fresh token
+    // (skipCache) and retry once. Two 401s in a row means the user really is
+    // unauthorized — surface that to the caller.
+    if (response.status === 401) {
+      if (import.meta.env.DEV) {
+        console.log("[API] 401 — retrying with fresh token");
+      }
+      response = await _sendAuthedFetch(endpoint, options, signal, true);
+    }
 
     if (import.meta.env.DEV) {
       console.log(`[API] Response status: ${response.status}`);
@@ -382,22 +399,10 @@ export interface ModelsResponse {
 }
 
 async function fetchStreamWithAuth(endpoint: string, options: RequestInit = {}, signal?: AbortSignal): Promise<Response> {
-  const token = await getAuthToken();
-
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...options.headers,
-  };
-
-  if (token) {
-    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  let response = await _sendAuthedFetch(endpoint, options, signal, false);
+  if (response.status === 401) {
+    response = await _sendAuthedFetch(endpoint, options, signal, true);
   }
-
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers,
-    signal,
-  });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "Request failed" }));
@@ -860,7 +865,7 @@ declare global {
   interface Window {
     Clerk?: {
       session?: {
-        getToken: () => Promise<string | null>;
+        getToken: (opts?: { skipCache?: boolean; template?: string }) => Promise<string | null>;
       };
       signOut: () => Promise<void>;
     };

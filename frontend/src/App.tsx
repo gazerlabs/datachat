@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider, useTheme, isDarkTheme } from "@/hooks/use-theme";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Pages
 import SignInPage from "@/pages/SignInPage";
@@ -154,7 +155,9 @@ function AppContent() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={0}>
-        <AppRoutes />
+        <ErrorBoundary>
+          <AppRoutes />
+        </ErrorBoundary>
         <Toaster position="top-right" />
       </TooltipProvider>
     </QueryClientProvider>
