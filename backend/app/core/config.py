@@ -20,6 +20,10 @@ if DATABASE_URL.startswith("postgres://"):
 CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY", "")
 CLERK_PUBLISHABLE_KEY = os.getenv("CLERK_PUBLISHABLE_KEY", "")
 DISABLE_AUTH = os.getenv("DISABLE_AUTH") == "true"
+# Optional Clerk JWT audience to enforce on every token. Clerk's default
+# session tokens do not set an `aud` claim, so this is opt-in — set it only
+# if you've configured a JWT template with a custom audience.
+CLERK_JWT_AUDIENCE = os.getenv("CLERK_JWT_AUDIENCE") or None
 
 if DISABLE_AUTH and IS_PRODUCTION:
     raise RuntimeError(
@@ -31,8 +35,16 @@ if DISABLE_AUTH and IS_PRODUCTION:
 # Anthropic
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-# CORS
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+# Frontend
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8080")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+
+# CORS. Default to the frontend origin rather than `*` — browsers reject
+# `*` paired with `allow_credentials=True`, so the wildcard never worked for
+# real cross-origin requests anyway, and the misconfig weakens CSRF posture.
+# Operators who want multiple origins set this to a comma-separated list.
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", FRONTEND_URL).split(",")
+ALLOWED_ORIGINS = [o.strip() for o in ALLOWED_ORIGINS if o.strip()]
 
 # Billing/Stripe is stripped from the OSS distribution. The flag stays
 # hard-False so the gating in token_usage_service + warehouses.py
@@ -40,10 +52,6 @@ ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 # hidden via the /api/config response. To re-enable, restore the
 # Stripe config block + a real billing_service implementation.
 BILLING_ENABLED = False
-
-# Frontend
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8080")
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 # Warehouse query timeout — kills long-running queries server-side where the
 # driver supports it (Postgres / Redshift / Snowflake). MotherDuck and BigQuery

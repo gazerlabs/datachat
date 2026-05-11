@@ -14,7 +14,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.core.database import get_db
-from app.core.config import CLERK_SECRET_KEY, CLERK_PUBLISHABLE_KEY, DISABLE_AUTH
+from app.core.config import (
+    CLERK_SECRET_KEY,
+    CLERK_PUBLISHABLE_KEY,
+    CLERK_JWT_AUDIENCE,
+    DISABLE_AUTH,
+)
 from app.models.user import User
 
 
@@ -37,6 +42,12 @@ _CLERK_JWKS_URL = (
     f"https://{_CLERK_FRONTEND_API}/.well-known/jwks.json"
     if _CLERK_FRONTEND_API
     else None
+)
+# Clerk session tokens are issued by the same frontend-API host that serves the
+# JWKS. Pin it so a token signed by some unrelated Clerk app — even one our
+# JWKS might fetch transitively — can't pass verification here.
+_CLERK_EXPECTED_ISSUER = (
+    f"https://{_CLERK_FRONTEND_API}" if _CLERK_FRONTEND_API else None
 )
 
 security = HTTPBearer(auto_error=False)
@@ -140,12 +151,23 @@ async def get_current_user(
                 detail=f"Failed to fetch Clerk JWKS from {_CLERK_JWKS_URL}. Check CLERK_PUBLISHABLE_KEY is set correctly.",
             )
 
-        payload = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["RS256"],
-            options={"verify_aud": False},
-        )
+        # Audience verification is opt-in: Clerk's default session tokens don't
+        # set `aud`, so enforce it only when CLERK_JWT_AUDIENCE is configured
+        # (e.g. via a Clerk JWT template). Issuer verification is always on
+        # when we know the expected issuer.
+        decode_kwargs = {
+            "algorithms": ["RS256"],
+            "options": {
+                "verify_aud": CLERK_JWT_AUDIENCE is not None,
+                "verify_iss": _CLERK_EXPECTED_ISSUER is not None,
+            },
+        }
+        if CLERK_JWT_AUDIENCE is not None:
+            decode_kwargs["audience"] = CLERK_JWT_AUDIENCE
+        if _CLERK_EXPECTED_ISSUER is not None:
+            decode_kwargs["issuer"] = _CLERK_EXPECTED_ISSUER
+
+        payload = jwt.decode(token, signing_key.key, **decode_kwargs)
 
         user_id = payload.get("sub")
         if not user_id:

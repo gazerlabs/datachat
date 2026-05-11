@@ -312,7 +312,8 @@ RESEND_API_KEY=re_...                  # Required for scheduled report emails. W
 RESEND_FROM_EMAIL="datachat <onboarding@resend.dev>"  # Sender envelope
 
 # Optional
-ALLOWED_ORIGINS=http://localhost:8080  # CORS origins
+ALLOWED_ORIGINS=http://localhost:8080  # CORS origins (defaults to FRONTEND_URL, never "*")
+CLERK_JWT_AUDIENCE=                    # Optional: enforce a custom Clerk JWT `aud` claim
 DISABLE_AUTH=false                     # Bypass auth for development
 CHAT_RATE_LIMIT=30/minute              # Per-user/IP rate limit on /api/chat[/stream]
 WAREHOUSE_QUERY_TIMEOUT_SECONDS=60     # statement_timeout for PG/Redshift/Snowflake

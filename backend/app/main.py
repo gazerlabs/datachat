@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,10 +9,27 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from app.core.config import ALLOWED_ORIGINS
+from app.core.config import ALLOWED_ORIGINS, DISABLE_AUTH
 from app.core.rate_limit import limiter
 from app.api import health, warehouses, conversations, feedback, usage, admin, account, demo, visualizations, salesforce, files, changelog, context, integrations, local_duckdb, reports, organization
 from app.services import scheduler_service
+
+logger = logging.getLogger(__name__)
+
+# `*` + allow_credentials is a misconfiguration: browsers reject the combo for
+# any credentialed request, and the wildcard signals an over-permissive setup.
+# In dev (DISABLE_AUTH=true) we allow it for convenience; otherwise we collapse
+# the origin list to FRONTEND_URL via config defaults and warn loudly if a
+# deployer pinned ALLOWED_ORIGINS=* explicitly.
+_CORS_ALLOWS_WILDCARD = "*" in ALLOWED_ORIGINS
+if _CORS_ALLOWS_WILDCARD and not DISABLE_AUTH:
+    logger.warning(
+        "ALLOWED_ORIGINS contains '*' while auth is enabled. Browsers reject "
+        "'Access-Control-Allow-Origin: *' with 'allow_credentials=True', so "
+        "credentialed cross-origin requests will fail. Set ALLOWED_ORIGINS to "
+        "your frontend URL(s) explicitly."
+    )
+_CORS_ALLOW_CREDENTIALS = not _CORS_ALLOWS_WILDCARD
 
 
 @asynccontextmanager
@@ -34,8 +52,8 @@ app.add_middleware(SlowAPIMiddleware)
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS if ALLOWED_ORIGINS != ["*"] else ["*"],
-    allow_credentials=True,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=_CORS_ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
