@@ -275,11 +275,20 @@ Executors are cached per warehouse_id in `warehouse_service.py` to avoid reconne
 ANTHROPIC_API_KEY=sk-ant-...        # Claude API access
 CLERK_SECRET_KEY=sk_...             # Clerk JWT validation
 
+# Environment (controls production safety gates)
+ENV=development                     # "development" (default) or "production".
+                                    # Production deploys MUST set ENV=production
+                                    # — it refuses DISABLE_AUTH=true and requires
+                                    # a non-default ENCRYPTION_KEY.
+
 # Database
 DATABASE_URL=postgresql://...       # Production (defaults to sqlite:///./datachat.db)
 
 # Security
-ENCRYPTION_KEY=your-secret-key      # Fernet encryption for credentials
+ENCRYPTION_KEY=your-secret-key      # Fernet encryption for credentials.
+                                    # Required (and must differ from the example
+                                    # default) when ENV=production. Generate with
+                                    # python -c 'import secrets; print(secrets.token_urlsafe(32))'
 
 # Stripe (billing)
 STRIPE_SECRET_KEY=sk_test_...           # Stripe API key

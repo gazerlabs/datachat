@@ -244,6 +244,8 @@ psql "$DATABASE_URL" -c "UPDATE users SET is_admin = true WHERE email = 'you@you
 
 When you're ready to deploy:
 
+- Set `ENV=production` on the backend. This is required — it activates the safety gates that refuse `DISABLE_AUTH=true` and the example `ENCRYPTION_KEY`. Without it, an accidental `DISABLE_AUTH=true` in your deploy config would leave the app wide open.
+- Generate a real `ENCRYPTION_KEY` (e.g. `python -c 'import secrets; print(secrets.token_urlsafe(32))'`) and set it on the backend. Warehouse credentials are encrypted with this; losing it means every connection has to be re-entered.
 - Promote your dev Clerk app to production (or create a fresh one) so you're using `pk_live_...` / `sk_live_...` keys.
 - In the Clerk dashboard, open **Domains** and add your production frontend URL (e.g. `https://datachat.yourcompany.com`).
 - Set the same `CLERK_*` env vars on your backend host (Railway / Fly / Render / Docker / etc.) and `VITE_CLERK_PUBLISHABLE_KEY` on your frontend host.
@@ -427,9 +429,10 @@ The demo warehouse has `is_demo=True` and `is_read_only=True`. The DELETE API an
 | Variable                       | Required | Purpose                                                                 |
 |--------------------------------|----------|-------------------------------------------------------------------------|
 | `ANTHROPIC_API_KEY`            | yes      | Claude API access.                                                      |
+| `ENV`                          | no       | `development` (default) or `production`. **Set `production` on every prod deploy** — it enables auth-bypass refusal and the `ENCRYPTION_KEY` check. |
 | `DATABASE_URL`                 | no       | Postgres URL. Defaults to `sqlite:///./datachat.db` if unset.           |
-| `ENCRYPTION_KEY`               | yes (prod) | Symmetric key for warehouse credentials (Fernet).                     |
-| `DISABLE_AUTH`                 | no       | `true` to bypass Clerk and impersonate `dev_user`. Useful for dev.      |
+| `ENCRYPTION_KEY`               | yes (prod) | Symmetric key for warehouse credentials (Fernet). Required (and must differ from the example value) when `ENV=production`. Generate with `python -c 'import secrets; print(secrets.token_urlsafe(32))'`. |
+| `DISABLE_AUTH`                 | no       | `true` to bypass Clerk and impersonate `dev_user`. Useful for dev. Refused when `ENV=production`. |
 | `CLERK_SECRET_KEY`             | (prod)   | Clerk JWT validation. Skip if `DISABLE_AUTH=true`.                      |
 | `CLERK_PUBLISHABLE_KEY`        | (prod)   | Clerk JWKS lookup.                                                       |
 | `RESEND_API_KEY`               | no       | Send report digests + invites. Omit to disable email features.          |

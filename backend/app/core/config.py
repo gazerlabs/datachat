@@ -5,6 +5,12 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
+# Environment. Defaults to "development" so local clone-and-run works without
+# extra setup. Production deployments MUST set ENV=production to enable the
+# safety gates below (auth-bypass refusal, encryption-key check).
+ENV = os.getenv("ENV", "development").lower()
+IS_PRODUCTION = ENV == "production"
+
 # Database
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./datachat.db")
 if DATABASE_URL.startswith("postgres://"):
@@ -14,6 +20,13 @@ if DATABASE_URL.startswith("postgres://"):
 CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY", "")
 CLERK_PUBLISHABLE_KEY = os.getenv("CLERK_PUBLISHABLE_KEY", "")
 DISABLE_AUTH = os.getenv("DISABLE_AUTH") == "true"
+
+if DISABLE_AUTH and IS_PRODUCTION:
+    raise RuntimeError(
+        "DISABLE_AUTH=true is not allowed when ENV=production. "
+        "DISABLE_AUTH auto-creates an admin dev_user and would leave the app "
+        "wide open. Unset DISABLE_AUTH, or set ENV=development for local work."
+    )
 
 # Anthropic
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
@@ -32,8 +45,23 @@ BILLING_ENABLED = False
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8080")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
-# Encryption
-ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "dev-encryption-key-change-in-production")
+# Encryption — Fernet key for warehouse-credential encryption.
+# Production deployments MUST provide an explicit ENCRYPTION_KEY. The default
+# fallback below is only used when ENV=development, so a forgotten env var in
+# production fails loudly instead of silently encrypting every customer's
+# credentials with a hardcoded key visible in the public repo.
+_DEV_ENCRYPTION_KEY = "dev-encryption-key-change-in-production"
+_encryption_key_from_env = os.getenv("ENCRYPTION_KEY")
+
+if IS_PRODUCTION:
+    if not _encryption_key_from_env or _encryption_key_from_env == _DEV_ENCRYPTION_KEY:
+        raise RuntimeError(
+            "ENCRYPTION_KEY must be set to a non-default value when ENV=production. "
+            "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+        )
+    ENCRYPTION_KEY = _encryption_key_from_env
+else:
+    ENCRYPTION_KEY = _encryption_key_from_env or _DEV_ENCRYPTION_KEY
 
 # Salesforce
 SALESFORCE_CLIENT_ID = os.getenv("SALESFORCE_CLIENT_ID", "")
