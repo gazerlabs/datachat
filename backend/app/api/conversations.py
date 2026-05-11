@@ -9,7 +9,7 @@ import uuid as uuid_mod
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -17,6 +17,7 @@ from app.core.database import get_db
 from app.core.config import WAREHOUSE_CONFIGS, ALLOWED_MODELS, DEFAULT_MODEL
 from app.core.security import decrypt_credentials
 from app.core.dependencies import require_auth, get_current_user
+from app.core.rate_limit import limiter, CHAT_RATE_LIMIT
 from app.models.user import User
 from app.models.warehouse import WarehouseConnection
 from app.models.conversation import Conversation, ConversationMessage
@@ -94,8 +95,10 @@ def _parse_query_result(result_text: str) -> list[dict]:
 
 
 @router.post("/api/chat", response_model=ChatResponse)
+@limiter.limit(CHAT_RATE_LIMIT)
 async def chat(
     request: ChatRequest,
+    req: Request,
     user: User = Depends(require_auth),
     db: Session = Depends(get_db),
 ):
@@ -604,8 +607,10 @@ RULES:
 
 
 @router.post("/api/chat/stream")
+@limiter.limit(CHAT_RATE_LIMIT)
 async def chat_stream(
     request: ChatRequest,
+    req: Request,
     user: User = Depends(require_auth),
     db: Session = Depends(get_db),
 ):

@@ -102,7 +102,7 @@ class TestBuildSystemPrompt:
 
 
 class TestCallClaudeWithTools:
-    @patch("app.services.chat_service.anthropic_client")
+    @patch("app.services.chat_service.async_anthropic_client")
     async def test_end_turn_returns_text(self, mock_client):
         from app.services.chat_service import call_claude_with_tools
 
@@ -115,7 +115,7 @@ class TestCallClaudeWithTools:
         mock_response.content = [mock_text_block]
         mock_response.usage.input_tokens = 100
         mock_response.usage.output_tokens = 50
-        mock_client.messages.create.return_value = mock_response
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
 
         executor = MagicMock()
         result = await call_claude_with_tools(
@@ -129,7 +129,7 @@ class TestCallClaudeWithTools:
         assert out == 50
         assert tool_count == 0
 
-    @patch("app.services.chat_service.anthropic_client")
+    @patch("app.services.chat_service.async_anthropic_client")
     async def test_tool_use_loop(self, mock_client):
         from app.services.chat_service import call_claude_with_tools
 
@@ -158,7 +158,7 @@ class TestCallClaudeWithTools:
         resp2.usage.input_tokens = 80
         resp2.usage.output_tokens = 30
 
-        mock_client.messages.create.side_effect = [resp1, resp2]
+        mock_client.messages.create = AsyncMock(side_effect=[resp1, resp2])
 
         executor = AsyncMock()
         executor.execute_sql.return_value = "| result |\n| 1 |"
@@ -175,7 +175,7 @@ class TestCallClaudeWithTools:
         assert tool_count == 1
         assert last_sql == "| result |\n| 1 |"
 
-    @patch("app.services.chat_service.anthropic_client")
+    @patch("app.services.chat_service.async_anthropic_client")
     async def test_no_tools_raises(self, mock_client):
         from app.services.chat_service import call_claude_with_tools
 

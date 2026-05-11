@@ -45,6 +45,11 @@ BILLING_ENABLED = False
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8080")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
+# Warehouse query timeout — kills long-running queries server-side where the
+# driver supports it (Postgres / Redshift / Snowflake). MotherDuck and BigQuery
+# don't expose an equivalent and rely on their own internal limits.
+WAREHOUSE_QUERY_TIMEOUT_SECONDS = int(os.getenv("WAREHOUSE_QUERY_TIMEOUT_SECONDS", "60"))
+
 # Encryption — Fernet key for warehouse-credential encryption.
 # Production deployments MUST provide an explicit ENCRYPTION_KEY. The default
 # fallback below is only used when ENV=development, so a forgotten env var in

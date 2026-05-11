@@ -61,6 +61,7 @@ class RedshiftExecutor(WarehouseExecutor):
 
     def _get_connection(self):
         import redshift_connector
+        from app.core.config import WAREHOUSE_QUERY_TIMEOUT_SECONDS
 
         if self._conn is not None:
             try:
@@ -113,6 +114,12 @@ class RedshiftExecutor(WarehouseExecutor):
             )
 
         self._conn.autocommit = True
+        try:
+            cur = self._conn.cursor()
+            cur.execute(f"SET statement_timeout TO {WAREHOUSE_QUERY_TIMEOUT_SECONDS * 1000}")
+            cur.close()
+        except Exception:
+            logger.debug("Failed to set statement_timeout on Redshift connection", exc_info=True)
         return self._conn
 
     def _run_query(self, sql: str) -> str:

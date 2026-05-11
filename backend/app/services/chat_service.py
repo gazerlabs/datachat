@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from typing import AsyncGenerator, List, Optional
 
-from anthropic import Anthropic, AsyncAnthropic
+from anthropic import AsyncAnthropic
 
 from app.core.config import (
     ANTHROPIC_API_KEY, CLAUDE_PRICING, ALLOWED_MODELS, DEFAULT_MODEL,
@@ -32,7 +32,6 @@ from app.utils.report_tools import (
 
 logger = logging.getLogger(__name__)
 
-anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
 async_anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 MAX_TOOL_ITERATIONS = 25
@@ -197,7 +196,7 @@ async def call_claude_with_tools(
     tool_call_count = 0
 
     for _ in range(MAX_TOOL_ITERATIONS):
-        response = anthropic_client.messages.create(
+        response = await async_anthropic_client.messages.create(
             model=model,
             max_tokens=max_tokens,
             system=system_prompt,
@@ -755,7 +754,7 @@ async def call_claude_with_file_tools(
         all_tools.extend(REPORT_TOOL_DEFINITIONS)
 
     for _ in range(MAX_TOOL_ITERATIONS):
-        response = anthropic_client.messages.create(
+        response = await async_anthropic_client.messages.create(
             model=model,
             max_tokens=max_tokens,
             system=system_prompt,

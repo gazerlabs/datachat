@@ -9,6 +9,7 @@ from app.connections.base import (
     WarehouseExecutor, format_schema_summary,
     MAX_ROWS, MAX_CHARS,
 )
+from app.core.config import WAREHOUSE_QUERY_TIMEOUT_SECONDS
 
 logger = logging.getLogger("warehouse_executor")
 
@@ -35,6 +36,7 @@ class PostgreSQLExecutor(WarehouseExecutor):
                 user=self._username,
                 password=self._password,
                 connect_timeout=10,
+                options=f"-c statement_timeout={WAREHOUSE_QUERY_TIMEOUT_SECONDS * 1000}",
             )
             self._conn.autocommit = True
         return self._conn

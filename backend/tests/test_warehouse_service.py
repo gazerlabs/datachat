@@ -81,6 +81,71 @@ class TestGetOrFetchSchema:
         assert result == ""
 
 
+class TestCacheBound:
+    """The executor and schema caches are bounded LRU OrderedDicts so a long-
+    running process with many distinct warehouses doesn't leak memory."""
+
+    def test_lru_evicts_oldest_executor(self, monkeypatch):
+        from app.services import warehouse_service as ws
+
+        monkeypatch.setattr(ws, "_CACHE_MAX_SIZE", 3)
+        ws._executor_cache.clear()
+        ws._schema_cache.clear()
+
+        with patch.object(ws, "create_executor", side_effect=lambda *a, **kw: MagicMock()):
+            for i in range(3):
+                ws.get_or_create_executor(f"wh-{i}", "postgresql", {})
+            # 4th entry triggers eviction of the LRU (wh-0)
+            ws.get_or_create_executor("wh-3", "postgresql", {})
+
+        assert "wh-0" not in ws._executor_cache
+        assert {"wh-1", "wh-2", "wh-3"}.issubset(ws._executor_cache.keys())
+        assert len(ws._executor_cache) == 3
+
+    async def test_lru_evicts_oldest_schema(self, monkeypatch):
+        from app.services import warehouse_service as ws
+
+        monkeypatch.setattr(ws, "_CACHE_MAX_SIZE", 2)
+        ws._schema_cache.clear()
+
+        for i in range(3):
+            mock_exec = AsyncMock()
+            mock_exec.get_schema_summary.return_value = f"schema-{i}"
+            await ws.get_or_fetch_schema(f"wh-{i}", mock_exec)
+
+        assert "wh-0" not in ws._schema_cache
+        assert len(ws._schema_cache) == 2
+
+    def test_access_moves_to_mru(self, monkeypatch):
+        from app.services import warehouse_service as ws
+
+        monkeypatch.setattr(ws, "_CACHE_MAX_SIZE", 2)
+        ws._executor_cache.clear()
+        ws._schema_cache.clear()
+
+        with patch.object(ws, "create_executor", side_effect=lambda *a, **kw: MagicMock()):
+            ws.get_or_create_executor("wh-A", "postgresql", {})
+            ws.get_or_create_executor("wh-B", "postgresql", {})
+            # Touch A so it becomes MRU; next insert should evict B, not A.
+            ws.get_or_create_executor("wh-A", "postgresql", {})
+            ws.get_or_create_executor("wh-C", "postgresql", {})
+
+        assert "wh-A" in ws._executor_cache
+        assert "wh-B" not in ws._executor_cache
+        assert "wh-C" in ws._executor_cache
+
+    def test_evict_closes_executor(self):
+        from app.services import warehouse_service as ws
+
+        ws._executor_cache.clear()
+        mock_exec = MagicMock()
+        mock_exec.close = MagicMock()
+        ws._executor_cache["wh-close"] = mock_exec
+
+        ws.evict_executor("wh-close")
+        mock_exec.close.assert_called_once()
+
+
 class TestTestWarehouseConnection:
     async def test_unknown_type(self):
         from app.services.warehouse_service import test_warehouse_connection

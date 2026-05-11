@@ -2,6 +2,9 @@
 
 import asyncio
 import json
+import logging
+import os
+from collections import OrderedDict
 from typing import Optional
 
 import httpx
@@ -10,15 +13,55 @@ from app.connections.base import WarehouseExecutor
 from app.connections.factory import create_executor
 from app.connections.bigquery import get_bigquery_access_token
 
+logger = logging.getLogger(__name__)
+
 # Cache executors by warehouse_id so connections persist across chat messages.
-_executor_cache: dict[str, WarehouseExecutor] = {}
-_schema_cache: dict[str, str] = {}
+# Bounded LRU eviction prevents unbounded growth in long-running processes with
+# many distinct warehouse connections. Size is generous — each entry is one open
+# DB connection, and most deployments have far fewer than this. Override via
+# WAREHOUSE_CACHE_MAX_SIZE if a self-hoster ever needs to.
+_CACHE_MAX_SIZE = int(os.getenv("WAREHOUSE_CACHE_MAX_SIZE", "256"))
+
+_executor_cache: "OrderedDict[str, WarehouseExecutor]" = OrderedDict()
+_schema_cache: "OrderedDict[str, str]" = OrderedDict()
+
+
+def _close_quietly(executor: WarehouseExecutor) -> None:
+    """Best-effort close on an evicted executor. Swallows everything because
+    we're evicting a stale connection we no longer have a use for."""
+    close = getattr(executor, "close", None)
+    if not callable(close):
+        return
+    try:
+        result = close()
+        # close() may be sync or async; we don't have an event loop here in
+        # the sync eviction path, so async closes are best-effort fire-and-forget.
+        if asyncio.iscoroutine(result):
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(result)
+                else:
+                    loop.run_until_complete(result)
+            except RuntimeError:
+                pass
+    except Exception:
+        logger.debug("Ignored error while closing evicted executor", exc_info=True)
+
+
+def _evict_oldest_if_full() -> None:
+    while len(_executor_cache) >= _CACHE_MAX_SIZE:
+        evicted_id, evicted_executor = _executor_cache.popitem(last=False)
+        _schema_cache.pop(evicted_id, None)
+        _close_quietly(evicted_executor)
 
 
 def get_or_create_executor(warehouse_id: str, warehouse_type: str, credentials: dict) -> tuple[WarehouseExecutor, bool]:
     """Return (executor, is_new). Reuses cached executors to avoid reconnecting."""
     if warehouse_id in _executor_cache:
+        _executor_cache.move_to_end(warehouse_id)
         return _executor_cache[warehouse_id], False
+    _evict_oldest_if_full()
     executor = create_executor(warehouse_type, credentials)
     _executor_cache[warehouse_id] = executor
     return executor, True
@@ -27,19 +70,24 @@ def get_or_create_executor(warehouse_id: str, warehouse_type: str, credentials: 
 async def get_or_fetch_schema(warehouse_id: str, executor: WarehouseExecutor) -> str:
     """Return cached schema summary, fetching on first call."""
     if warehouse_id in _schema_cache:
+        _schema_cache.move_to_end(warehouse_id)
         return _schema_cache[warehouse_id]
     try:
         summary = await executor.get_schema_summary()
     except Exception:
         summary = ""
+    while len(_schema_cache) >= _CACHE_MAX_SIZE:
+        _schema_cache.popitem(last=False)
     _schema_cache[warehouse_id] = summary
     return summary
 
 
 def evict_executor(warehouse_id: str) -> None:
     """Remove a cached executor and schema (e.g. after delete or credential change)."""
-    _executor_cache.pop(warehouse_id, None)
+    executor = _executor_cache.pop(warehouse_id, None)
     _schema_cache.pop(warehouse_id, None)
+    if executor is not None:
+        _close_quietly(executor)
 
 
 async def test_warehouse_connection(warehouse_type: str, credentials: dict) -> dict:

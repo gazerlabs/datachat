@@ -192,6 +192,19 @@ class TestSnowflakeExecutor:
         with pytest.raises(Exception, match="Connection refused"):
             await executor.execute_sql("SELECT 1")
 
+    def test_connection_includes_statement_timeout(self):
+        mock_connector = MagicMock()
+        mock_conn = MagicMock()
+        mock_connector.connect.return_value = mock_conn
+
+        Cls = self._make_executor(mock_connector)
+        executor = Cls(account="acc", username="user", password="pass", warehouse="wh", database="db")
+        executor._get_connection()
+
+        _, kwargs = mock_connector.connect.call_args
+        assert "session_parameters" in kwargs
+        assert "STATEMENT_TIMEOUT_IN_SECONDS" in kwargs["session_parameters"]
+
 
 # ---------------------------------------------------------------------------
 # PostgreSQL
@@ -252,6 +265,20 @@ class TestPostgreSQLExecutor:
         executor = Cls(host="badhost", port="5432", database="testdb", username="user", password="pass")
         with pytest.raises(Exception, match="Connection refused"):
             await executor.execute_sql("SELECT 1")
+
+    def test_connection_includes_statement_timeout(self):
+        mock_pg = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.closed = False
+        mock_pg.connect.return_value = mock_conn
+
+        Cls = self._make_executor(mock_pg)
+        executor = Cls(host="localhost", port="5432", database="testdb", username="user", password="pass")
+        executor._get_connection()
+
+        _, kwargs = mock_pg.connect.call_args
+        assert "options" in kwargs
+        assert "statement_timeout" in kwargs["options"]
 
 
 # ---------------------------------------------------------------------------

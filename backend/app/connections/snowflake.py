@@ -9,6 +9,7 @@ from app.connections.base import (
     WarehouseExecutor, format_schema_summary,
     MAX_ROWS, MAX_CHARS,
 )
+from app.core.config import WAREHOUSE_QUERY_TIMEOUT_SECONDS
 
 logger = logging.getLogger("warehouse_executor")
 
@@ -34,6 +35,9 @@ class SnowflakeExecutor(WarehouseExecutor):
                 password=self._password,
                 warehouse=self._warehouse,
                 database=self._database,
+                session_parameters={
+                    "STATEMENT_TIMEOUT_IN_SECONDS": WAREHOUSE_QUERY_TIMEOUT_SECONDS,
+                },
             )
         return self._conn
 

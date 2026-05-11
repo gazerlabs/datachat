@@ -314,6 +314,9 @@ RESEND_FROM_EMAIL="datachat <onboarding@resend.dev>"  # Sender envelope
 # Optional
 ALLOWED_ORIGINS=http://localhost:8080  # CORS origins
 DISABLE_AUTH=false                     # Bypass auth for development
+CHAT_RATE_LIMIT=30/minute              # Per-user/IP rate limit on /api/chat[/stream]
+WAREHOUSE_QUERY_TIMEOUT_SECONDS=60     # statement_timeout for PG/Redshift/Snowflake
+WAREHOUSE_CACHE_MAX_SIZE=256           # LRU cap on warehouse executor cache
 ```
 
 ### Frontend (frontend/.env)
