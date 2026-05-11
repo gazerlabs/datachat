@@ -1,13 +1,14 @@
 """Conversation and chat endpoints."""
 
 import json
+import logging
 import re
-import sys
 import time
-import traceback
 import uuid as uuid_mod
 from datetime import datetime
 from typing import List, Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -248,13 +249,15 @@ RULES:
                 if isinstance(sf_allowed, str):
                     sf_allowed = json.loads(sf_allowed)
                 sf_allowed_objects_list = sf_allowed
-            except Exception as e:
-                import traceback as tb
-                tb.print_exc()
+            except Exception:
+                logger.exception(
+                    "Failed to set up Salesforce executor for user_id=%s sf_id=%s",
+                    user.id, sf_connection.id,
+                )
                 if not warehouse:
                     return ChatResponse(
                         success=False,
-                        response=f"Failed to connect to Salesforce: {e}. Please try reconnecting in Settings.",
+                        response="Failed to connect to Salesforce. Please try reconnecting in Settings.",
                         conversation_id=request.conversation_id or str(uuid_mod.uuid4()),
                     )
                 sf_executor = None
@@ -397,21 +400,28 @@ RULES:
     except HTTPException:
         raise
     except Exception as e:
-        traceback.print_exc(file=sys.stderr)
-        error_msg = str(e)
-
-        if "credit balance is too low" in error_msg.lower():
-            error_msg = "The AI service is temporarily unavailable due to API credit limits. Please contact the administrator."
-        elif "rate_limit" in error_msg.lower():
-            error_msg = "Too many requests. Please wait a moment and try again."
-        elif "overloaded" in error_msg.lower():
-            error_msg = "The AI service is currently busy. Please try again in a few seconds."
-        elif "invalid_api_key" in error_msg.lower():
-            error_msg = "API configuration error. Please contact the administrator."
+        # Log the full traceback server-side; return a generic message to the
+        # client unless the error matches a known, safe-to-surface category.
+        logger.exception(
+            "Chat handler failed for user_id=%s conversation_id=%s",
+            getattr(user, "id", None),
+            request.conversation_id,
+        )
+        lowered = str(e).lower()
+        if "credit balance is too low" in lowered:
+            client_msg = "The AI service is temporarily unavailable due to API credit limits. Please contact the administrator."
+        elif "rate_limit" in lowered:
+            client_msg = "Too many requests. Please wait a moment and try again."
+        elif "overloaded" in lowered:
+            client_msg = "The AI service is currently busy. Please try again in a few seconds."
+        elif "invalid_api_key" in lowered:
+            client_msg = "API configuration error. Please contact the administrator."
+        else:
+            client_msg = "Something went wrong on the server. Please try again, and contact support if it keeps happening."
 
         return ChatResponse(
             success=False,
-            response=error_msg,
+            response=client_msg,
             conversation_id=request.conversation_id or str(uuid_mod.uuid4()),
         )
 
@@ -581,11 +591,13 @@ RULES:
             if isinstance(sf_allowed, str):
                 sf_allowed = json.loads(sf_allowed)
             sf_allowed_objects_list = sf_allowed
-        except Exception as e:
-            import traceback as tb
-            tb.print_exc()
+        except Exception:
+            logger.exception(
+                "Failed to set up Salesforce executor for user_id=%s sf_id=%s",
+                user.id, sf_connection.id,
+            )
             if not warehouse:
-                raise ValueError(f"Failed to connect to Salesforce: {e}. Please try reconnecting in Settings.")
+                raise ValueError("Failed to connect to Salesforce. Please try reconnecting in Settings.")
             sf_executor = None
 
     selected_model = request.model if request.model in ALLOWED_MODELS else DEFAULT_MODEL
@@ -844,18 +856,24 @@ async def chat_stream(
             yield f"event: done\ndata: {json.dumps(done_event)}\n\n"
 
         except Exception as e:
-            traceback.print_exc(file=sys.stderr)
-            error_msg = str(e)
-            if "credit balance is too low" in error_msg.lower():
-                error_msg = "The AI service is temporarily unavailable due to API credit limits. Please contact the administrator."
-            elif "rate_limit" in error_msg.lower():
-                error_msg = "Too many requests. Please wait a moment and try again."
-            elif "overloaded" in error_msg.lower():
-                error_msg = "The AI service is currently busy. Please try again in a few seconds."
-            elif "invalid_api_key" in error_msg.lower():
-                error_msg = "API configuration error. Please contact the administrator."
+            logger.exception(
+                "Chat stream failed for user_id=%s conversation_id=%s",
+                getattr(user, "id", None),
+                request.conversation_id,
+            )
+            lowered = str(e).lower()
+            if "credit balance is too low" in lowered:
+                client_msg = "The AI service is temporarily unavailable due to API credit limits. Please contact the administrator."
+            elif "rate_limit" in lowered:
+                client_msg = "Too many requests. Please wait a moment and try again."
+            elif "overloaded" in lowered:
+                client_msg = "The AI service is currently busy. Please try again in a few seconds."
+            elif "invalid_api_key" in lowered:
+                client_msg = "API configuration error. Please contact the administrator."
+            else:
+                client_msg = "Something went wrong on the server. Please try again, and contact support if it keeps happening."
 
-            yield f"event: error\ndata: {json.dumps({'message': error_msg})}\n\n"
+            yield f"event: error\ndata: {json.dumps({'message': client_msg})}\n\n"
 
     return StreamingResponse(
         event_generator(),

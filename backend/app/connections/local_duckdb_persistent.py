@@ -9,6 +9,7 @@ volume in production).
 import asyncio
 import logging
 import os
+import re
 from typing import Optional
 
 from tabulate import tabulate
@@ -18,13 +19,26 @@ from app.connections.duckdb_local import _filename_to_table_name, _load_file_int
 
 logger = logging.getLogger("warehouse_executor")
 
+# Clerk user IDs look like `user_<base32>` — letters, digits, hyphen, underscore.
+# Be strict here: anything else hitting the filesystem is either a coding bug
+# or an attempt to escape the storage directory via path-traversal characters
+# (".", "/", "\\", null bytes, etc.). Refuse rather than try to sanitize.
+_SAFE_USER_ID = re.compile(r"\A[A-Za-z0-9_\-]+\Z")
+
+
+def _safe_user_id(user_id: str) -> str:
+    if not user_id or not _SAFE_USER_ID.fullmatch(user_id):
+        raise ValueError(f"Invalid user_id for DuckDB path: {user_id!r}")
+    return user_id
+
 
 def get_user_db_path(base_dir: str, user_id: str) -> str:
     """Return the absolute path to a user's persistent DuckDB file.
 
     Caller is responsible for ensuring the parent directory exists before opening
-    the file for write."""
-    safe_id = user_id.replace("/", "_").replace("..", "_")
+    the file for write. Raises ValueError if user_id contains characters that
+    could break out of base_dir."""
+    safe_id = _safe_user_id(user_id)
     return os.path.abspath(os.path.join(base_dir, f"{safe_id}.duckdb"))
 
 

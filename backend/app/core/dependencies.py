@@ -2,6 +2,7 @@
 
 import os
 import base64
+import logging
 from typing import Optional
 from functools import lru_cache
 
@@ -21,6 +22,8 @@ from app.core.config import (
     DISABLE_AUTH,
 )
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 def _get_clerk_frontend_api() -> Optional[str]:
@@ -106,6 +109,7 @@ async def _fetch_clerk_user(user_id: str) -> dict:
             else:
                 return {"email": f"{user_id}@datachat.app"}
     except Exception:
+        logger.exception("Clerk user fetch failed for user_id=%s", user_id)
         return {"email": f"{user_id}@datachat.app"}
 
 
@@ -191,7 +195,9 @@ async def get_current_user(
                         db.commit()
                         db.refresh(user)
             except Exception:
-                pass
+                logger.exception(
+                    "Failed to refresh Clerk email for user_id=%s", user_id,
+                )
 
         if not user:
             user_data = await _fetch_clerk_user(user_id)
@@ -266,7 +272,9 @@ async def get_current_user(
                     from app.services import demo_warehouse_service
                     await demo_warehouse_service.ensure_demos(db, user)
                 except Exception:
-                    pass
+                    logger.exception(
+                        "Demo warehouse attach failed for user_id=%s", user.id,
+                    )
 
         # Make sure the user is in an organization. Cheap no-op if already set.
         if user and not user.organization_id:
@@ -275,18 +283,24 @@ async def get_current_user(
                 org_service.get_or_create_org_for_user(db, user)
             except Exception:
                 # Don't block login on a transient org-assignment failure.
-                pass
+                logger.exception(
+                    "Org assignment failed for user_id=%s", user.id,
+                )
 
         return user
 
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError as e:
+        # PyJWT's InvalidTokenError messages are safe to surface (e.g.
+        # "Signature verification failed", "Audience doesn't match") and help
+        # debug Clerk misconfigurations.
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+    except Exception:
+        logger.exception("Unexpected auth failure")
+        raise HTTPException(status_code=401, detail="Authentication failed")
 
 
 async def require_auth(

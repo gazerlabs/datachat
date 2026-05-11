@@ -66,13 +66,13 @@ class MCPBridge:
             try:
                 await self._session.__aexit__(None, None, None)
             except Exception:
-                pass
+                logger.debug("MCP session cleanup failed", exc_info=True)
             self._session = None
         if self._cm:
             try:
                 await self._cm.__aexit__(None, None, None)
             except Exception:
-                pass
+                logger.debug("MCP transport cleanup failed", exc_info=True)
             self._cm = None
 
     async def get_tools_as_anthropic_format(self) -> list[dict]:
