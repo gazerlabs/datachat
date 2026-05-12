@@ -60,7 +60,7 @@ export function AnthropicKeyCard() {
   return (
     <Card className="mb-8">
       <CardHeader>
-        <CardTitle>LLM API Key</CardTitle>
+        <CardTitle>Anthropic API Key</CardTitle>
         <CardDescription>
           Your{" "}
           <a
@@ -71,8 +71,7 @@ export function AnthropicKeyCard() {
           >
             Anthropic API key
           </a>{" "}
-          powers every chat. Paste it once here and you're done — no `.env`
-          editing or backend restart needed.
+          powers every chat.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
