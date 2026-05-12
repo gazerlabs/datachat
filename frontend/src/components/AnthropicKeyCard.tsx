@@ -9,20 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, ApiError, AnthropicKeyStatus } from "@/lib/api";
 
-function formatSetDate(iso: string): string {
-  // Render as YYYY-MM-DD in the user's local timezone. Backend tags the
-  // value as UTC (`+00:00`/`Z` suffix), so `new Date(iso)` lands on the
-  // correct instant and getFullYear/Month/Date return the local calendar
-  // day — important when the UTC clock has already crossed midnight but
-  // the user's local clock hasn't.
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 /**
  * In-app Anthropic key configuration. Lives on the Settings page so a
  * self-hoster can paste their key without editing .env. Admin-only behind the
@@ -99,14 +85,12 @@ export function AnthropicKeyCard() {
                   <span className="text-muted-foreground">Active key:</span>{" "}
                   <code className="px-1.5 py-0.5 rounded bg-muted text-xs">
                     {status.masked}
-                  </code>{" "}
-                  <span className="text-muted-foreground">
-                    ({status.source === "database" && status.updated_at
-                      ? `set on ${formatSetDate(status.updated_at)}`
-                      : status.source === "database"
-                        ? "set in Settings"
-                        : "from ANTHROPIC_API_KEY env var"})
-                  </span>
+                  </code>
+                  {status.source === "env" && (
+                    <span className="text-muted-foreground">
+                      {" "}(from ANTHROPIC_API_KEY env var)
+                    </span>
+                  )}
                 </span>
               ) : (
                 <span className="text-destructive">
