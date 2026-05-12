@@ -7,9 +7,10 @@ from datetime import datetime
 from typing import AsyncGenerator, List, Optional
 
 from anthropic import AsyncAnthropic
+from sqlalchemy.orm import Session
 
 from app.core.config import (
-    ANTHROPIC_API_KEY, CLAUDE_PRICING, ALLOWED_MODELS, DEFAULT_MODEL,
+    CLAUDE_PRICING, ALLOWED_MODELS, DEFAULT_MODEL,
     WAREHOUSE_CONFIGS,
 )
 from app.connections.base import WarehouseExecutor
@@ -21,6 +22,7 @@ from app.services.salesforce_executor import (
     SALESFORCE_TOOL_DEFINITIONS,
     execute_salesforce_tool,
 )
+from app.services.settings_service import NoApiKeyError  # re-exported for handlers
 from app.utils.tools import TOOL_DEFINITIONS, execute_tool, FILE_TOOL_DEFINITIONS, execute_file_tool
 from app.utils.report_tools import (
     REPORT_TOOL_DEFINITIONS,
@@ -32,7 +34,25 @@ from app.utils.report_tools import (
 
 logger = logging.getLogger(__name__)
 
-async_anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+# Cache one AsyncAnthropic instance per API-key value. Creating the client is
+# cheap, but it owns an httpx connection pool we'd rather reuse across calls.
+# Keyed on the resolved key string so a rotation via Settings → API Keys
+# transparently switches to a fresh pool without leaking the old one.
+_client_cache: "dict[str, AsyncAnthropic]" = {}
+
+
+def get_anthropic_client(db: Session) -> AsyncAnthropic:
+    """Resolve the configured Anthropic key (DB → env) and return a cached
+    client for it. Raises NoApiKeyError if neither source has a real key —
+    the chat handlers translate that into a friendly "configure in Settings"
+    response."""
+    from app.services.settings_service import require_anthropic_key
+
+    key = require_anthropic_key(db)
+    if key not in _client_cache:
+        _client_cache[key] = AsyncAnthropic(api_key=key)
+    return _client_cache[key]
+
 
 MAX_TOOL_ITERATIONS = 25
 
@@ -148,6 +168,7 @@ REPORTS:
 async def call_claude_with_tools(
     messages: List[dict],
     system_prompt: str,
+    anthropic_client: AsyncAnthropic,
     warehouse_type: str = "",
     credentials: dict | None = None,
     max_tokens: int = 4096,
@@ -196,7 +217,7 @@ async def call_claude_with_tools(
     tool_call_count = 0
 
     for _ in range(MAX_TOOL_ITERATIONS):
-        response = await async_anthropic_client.messages.create(
+        response = await anthropic_client.messages.create(
             model=model,
             max_tokens=max_tokens,
             system=system_prompt,
@@ -300,6 +321,7 @@ async def call_claude_with_tools(
 async def stream_claude_with_tools(
     messages: List[dict],
     system_prompt: str,
+    anthropic_client: AsyncAnthropic,
     warehouse_type: str = "",
     credentials: dict | None = None,
     max_tokens: int = 4096,
@@ -367,7 +389,7 @@ async def stream_claude_with_tools(
             yield {"event": "text_delta", "data": {"delta": "\n\n"}}
             full_response_text += "\n\n"
 
-        async with async_anthropic_client.messages.stream(
+        async with anthropic_client.messages.stream(
             model=model,
             max_tokens=max_tokens,
             system=system_prompt,
@@ -511,6 +533,7 @@ async def stream_claude_with_file_tools(
     messages: List[dict],
     system_prompt: str,
     executor,
+    anthropic_client: AsyncAnthropic,
     max_tokens: int = 4096,
     model: str = DEFAULT_MODEL,
     report_tool_ctx: ReportToolContext | None = None,
@@ -549,7 +572,7 @@ async def stream_claude_with_file_tools(
             yield {"event": "text_delta", "data": {"delta": "\n\n"}}
             full_response_text += "\n\n"
 
-        async with async_anthropic_client.messages.stream(
+        async with anthropic_client.messages.stream(
             model=model,
             max_tokens=max_tokens,
             system=system_prompt,
@@ -736,6 +759,7 @@ async def call_claude_with_file_tools(
     messages: List[dict],
     system_prompt: str,
     executor,
+    anthropic_client: AsyncAnthropic,
     max_tokens: int = 4096,
     model: str = DEFAULT_MODEL,
     report_tool_ctx: ReportToolContext | None = None,
@@ -754,7 +778,7 @@ async def call_claude_with_file_tools(
         all_tools.extend(REPORT_TOOL_DEFINITIONS)
 
     for _ in range(MAX_TOOL_ITERATIONS):
-        response = await async_anthropic_client.messages.create(
+        response = await anthropic_client.messages.create(
             model=model,
             max_tokens=max_tokens,
             system=system_prompt,

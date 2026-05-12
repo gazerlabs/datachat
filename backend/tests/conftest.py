@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 # Set test env vars before importing app modules
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
@@ -18,6 +19,10 @@ os.environ["CLERK_SECRET_KEY"] = ""
 os.environ["CLERK_PUBLISHABLE_KEY"] = ""
 
 from app.core.database import Base
+# Importing the `models` package eagerly registers every table on the shared
+# Base.metadata so create_all() builds the full schema (including newer tables
+# like app_settings that some tests use without their dedicated model imports).
+import app.models  # noqa: F401
 from app.models.user import User
 from app.models.warehouse import WarehouseConnection
 from app.models.conversation import Conversation, ConversationMessage
@@ -27,7 +32,15 @@ from app.core.security import encrypt_credentials
 
 @pytest.fixture()
 def db_engine():
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    # StaticPool keeps the same in-memory connection across all queries for
+    # this test. Without it each new connection gets a fresh empty DB and
+    # multi-roundtrip tests randomly see "no such table" for whichever
+    # connection wasn't the one create_all ran on.
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(bind=engine)
     yield engine
     Base.metadata.drop_all(bind=engine)

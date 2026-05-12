@@ -398,6 +398,13 @@ export interface ModelsResponse {
   default: string;
 }
 
+export interface AnthropicKeyStatus {
+  configured: boolean;
+  effective: boolean;
+  source: "database" | "env" | null;
+  masked: string | null;
+}
+
 async function fetchStreamWithAuth(endpoint: string, options: RequestInit = {}, signal?: AbortSignal): Promise<Response> {
   let response = await _sendAuthedFetch(endpoint, options, signal, false);
   if (response.status === 401) {
@@ -436,6 +443,19 @@ export const api = {
   // Models
   getModels: (): Promise<ModelsResponse> =>
     fetchPublic("/api/models"),
+
+  // App settings (admin)
+  getAnthropicKeyStatus: (): Promise<AnthropicKeyStatus> =>
+    fetchWithAuth("/api/settings/anthropic-key"),
+
+  setAnthropicKey: (apiKey: string): Promise<AnthropicKeyStatus> =>
+    fetchWithAuth("/api/settings/anthropic-key", {
+      method: "PUT",
+      body: JSON.stringify({ api_key: apiKey }),
+    }),
+
+  deleteAnthropicKey: (): Promise<AnthropicKeyStatus> =>
+    fetchWithAuth("/api/settings/anthropic-key", { method: "DELETE" }),
 
   // Warehouse
   getWarehouseTypes: (): Promise<Record<string, WarehouseType>> =>

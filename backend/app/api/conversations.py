@@ -33,6 +33,7 @@ from app.services.chat_service import (
     build_system_prompt, call_claude_with_tools, calculate_cost,
     build_file_system_prompt, call_claude_with_file_tools,
     stream_claude_with_tools, stream_claude_with_file_tools,
+    get_anthropic_client, NoApiKeyError,
 )
 from app.services.warehouse_service import get_or_create_executor, get_or_fetch_schema
 from app.services.visualization_service import suggest_visualization
@@ -98,13 +99,22 @@ def _parse_query_result(result_text: str) -> list[dict]:
 @router.post("/api/chat", response_model=ChatResponse)
 @limiter.limit(CHAT_RATE_LIMIT)
 async def chat(
-    request: ChatRequest,
-    req: Request,
+    payload: ChatRequest,
+    request: Request,
     user: User = Depends(require_auth),
     db: Session = Depends(get_db),
 ):
     """Send a message and get a response."""
     try:
+        try:
+            anthropic_client = get_anthropic_client(db)
+        except NoApiKeyError as e:
+            return ChatResponse(
+                success=False,
+                response=str(e),
+                conversation_id=payload.conversation_id or str(uuid_mod.uuid4()),
+            )
+
         usage_check = TokenUsageService.check_pre_query(db, user)
         if not usage_check["allowed"]:
             raise HTTPException(
@@ -114,39 +124,39 @@ async def chat(
 
         # Check for file session first (takes priority)
         file_session = None
-        if request.file_session_id:
-            file_session = get_file_session(request.file_session_id, user.id)
+        if payload.file_session_id:
+            file_session = get_file_session(payload.file_session_id, user.id)
             if file_session is None:
                 return ChatResponse(
                     success=False,
                     response="File session expired or not found. Please re-upload your file.",
-                    conversation_id=request.conversation_id or str(uuid_mod.uuid4()),
+                    conversation_id=payload.conversation_id or str(uuid_mod.uuid4()),
                 )
 
         # Persistent local DuckDB (per-user)
         local_db = None
-        if request.local_duckdb_id and not file_session:
+        if payload.local_duckdb_id and not file_session:
             local_db = local_duckdb_service.get_user_db(db, user.id)
-            if local_db is None or local_db.id != request.local_duckdb_id:
+            if local_db is None or local_db.id != payload.local_duckdb_id:
                 return ChatResponse(
                     success=False,
                     response="Local data source not found. Upload a file in Settings to get started.",
-                    conversation_id=request.conversation_id or str(uuid_mod.uuid4()),
+                    conversation_id=payload.conversation_id or str(uuid_mod.uuid4()),
                 )
 
         warehouse = None
         sf_connection = None
 
-        if request.salesforce_id:
+        if payload.salesforce_id:
             # Explicit Salesforce selection — use ONLY Salesforce
             sf_connection = db.query(SalesforceConnection).filter(
-                SalesforceConnection.id == request.salesforce_id,
+                SalesforceConnection.id == payload.salesforce_id,
                 SalesforceConnection.user_id == user.id,
             ).first()
-        elif request.warehouse_id:
+        elif payload.warehouse_id:
             # Explicit warehouse selection — use ONLY warehouse
             warehouse = db.query(WarehouseConnection).filter(
-                WarehouseConnection.id == request.warehouse_id,
+                WarehouseConnection.id == payload.warehouse_id,
                 WarehouseConnection.user_id == user.id,
             ).first()
         else:
@@ -165,13 +175,13 @@ async def chat(
             return ChatResponse(
                 success=False,
                 response="Please connect a data source first. Go to Settings to add a warehouse, upload a file, or connect Salesforce.",
-                conversation_id=request.conversation_id or str(uuid_mod.uuid4()),
+                conversation_id=payload.conversation_id or str(uuid_mod.uuid4()),
             )
 
         conversation = None
-        if request.conversation_id:
+        if payload.conversation_id:
             conversation = db.query(Conversation).filter(
-                Conversation.id == request.conversation_id,
+                Conversation.id == payload.conversation_id,
                 Conversation.user_id == user.id,
             ).first()
 
@@ -180,7 +190,7 @@ async def chat(
                 id=str(uuid_mod.uuid4()),
                 user_id=user.id,
                 warehouse_connection_id=warehouse.id if warehouse else None,
-                title=request.message[:50] + "..." if len(request.message) > 50 else request.message,
+                title=payload.message[:50] + "..." if len(payload.message) > 50 else payload.message,
             )
             db.add(conversation)
             db.commit()
@@ -198,7 +208,7 @@ async def chat(
             return content
 
         messages = [{"role": m.role, "content": compress_message(m.content, m.role)} for m in history_messages]
-        messages.append({"role": "user", "content": request.message})
+        messages.append({"role": "user", "content": payload.message})
 
         # Prepare warehouse credentials — connection + schema deferred for streaming status events
         credentials = None
@@ -258,11 +268,11 @@ RULES:
                     return ChatResponse(
                         success=False,
                         response="Failed to connect to Salesforce. Please try reconnecting in Settings.",
-                        conversation_id=request.conversation_id or str(uuid_mod.uuid4()),
+                        conversation_id=payload.conversation_id or str(uuid_mod.uuid4()),
                     )
                 sf_executor = None
 
-        selected_model = request.model if request.model in ALLOWED_MODELS else DEFAULT_MODEL
+        selected_model = payload.model if payload.model in ALLOWED_MODELS else DEFAULT_MODEL
 
         # --- File session path (DuckDB-backed) ---
         last_sql_result = None
@@ -282,6 +292,7 @@ RULES:
                 messages=messages,
                 system_prompt=file_system_prompt,
                 executor=file_executor,
+                anthropic_client=anthropic_client,
                 model=selected_model,
             )
             duration_ms = int((time.time() - start_time) * 1000)
@@ -307,6 +318,7 @@ RULES:
                     messages=messages,
                     system_prompt=local_system_prompt,
                     executor=local_executor,
+                    anthropic_client=anthropic_client,
                     model=selected_model,
                     report_tool_ctx=local_report_tool_ctx,
                 )
@@ -325,6 +337,7 @@ RULES:
             response_text, input_tokens, output_tokens, last_sql_result, _ = await call_claude_with_tools(
                 messages=messages,
                 system_prompt=system_prompt,
+                anthropic_client=anthropic_client,
                 warehouse_type=warehouse.warehouse_type if warehouse else "",
                 credentials=credentials,
                 warehouse_id=warehouse.id if warehouse else None,
@@ -351,7 +364,7 @@ RULES:
         user_message = ConversationMessage(
             conversation_id=conversation.id,
             role="user",
-            content=request.message,
+            content=payload.message,
         )
         assistant_message = ConversationMessage(
             conversation_id=conversation.id,
@@ -405,7 +418,7 @@ RULES:
         logger.exception(
             "Chat handler failed for user_id=%s conversation_id=%s",
             getattr(user, "id", None),
-            request.conversation_id,
+            payload.conversation_id,
         )
         lowered = str(e).lower()
         if "credit balance is too low" in lowered:
@@ -422,7 +435,7 @@ RULES:
         return ChatResponse(
             success=False,
             response=client_msg,
-            conversation_id=request.conversation_id or str(uuid_mod.uuid4()),
+            conversation_id=payload.conversation_id or str(uuid_mod.uuid4()),
         )
 
 
@@ -621,13 +634,23 @@ RULES:
 @router.post("/api/chat/stream")
 @limiter.limit(CHAT_RATE_LIMIT)
 async def chat_stream(
-    request: ChatRequest,
-    req: Request,
+    payload: ChatRequest,
+    request: Request,
     user: User = Depends(require_auth),
     db: Session = Depends(get_db),
 ):
     """Send a message and stream the response as SSE events."""
     try:
+        try:
+            anthropic_client = get_anthropic_client(db)
+        except NoApiKeyError as e:
+            # Emit a single SSE error event and finish — same shape the
+            # frontend already handles for runtime errors. Use status 200
+            # so the stream is consumed cleanly.
+            async def no_key_stream():
+                yield f"event: error\ndata: {json.dumps({'message': str(e), 'code': 'no_anthropic_key'})}\n\n"
+            return StreamingResponse(no_key_stream(), media_type="text/event-stream")
+
         usage_check = TokenUsageService.check_pre_query(db, user)
         if not usage_check["allowed"]:
             raise HTTPException(
@@ -635,7 +658,7 @@ async def chat_stream(
                 detail=usage_check["warning"],
             )
 
-        ctx = await _prepare_chat_context(request, user, db)
+        ctx = await _prepare_chat_context(payload, user, db)
         stream_memory_context = context_service.get_context(db, user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -660,6 +683,7 @@ async def chat_stream(
                     messages=ctx["messages"],
                     system_prompt=file_system_prompt,
                     executor=file_executor,
+                    anthropic_client=anthropic_client,
                     model=ctx["selected_model"],
                 ):
                     if evt["event"] == "_done":
@@ -688,6 +712,7 @@ async def chat_stream(
                         messages=ctx["messages"],
                         system_prompt=local_system_prompt,
                         executor=local_executor,
+                        anthropic_client=anthropic_client,
                         model=ctx["selected_model"],
                         report_tool_ctx=local_report_tool_ctx,
                     ):
@@ -716,7 +741,7 @@ async def chat_stream(
                 first_conversation = False
                 datasets_count = 0
                 tables_count = 0
-                if not request.conversation_id:
+                if not payload.conversation_id:
                     prior_convs = db.query(Conversation).filter(
                         Conversation.user_id == user.id,
                         Conversation.warehouse_connection_id == warehouse.id,
@@ -752,6 +777,7 @@ async def chat_stream(
                 async for evt in stream_claude_with_tools(
                     messages=ctx["messages"],
                     system_prompt=system_prompt,
+                    anthropic_client=anthropic_client,
                     warehouse_type=warehouse.warehouse_type,
                     credentials=ctx["credentials"],
                     warehouse_id=warehouse.id,
@@ -773,6 +799,7 @@ async def chat_stream(
                 async for evt in stream_claude_with_tools(
                     messages=ctx["messages"],
                     system_prompt=ctx["system_prompt"],
+                    anthropic_client=anthropic_client,
                     sf_executor=ctx["sf_executor"],
                     allowed_objects=ctx["sf_allowed_objects_list"],
                     model=ctx["selected_model"],
@@ -809,7 +836,7 @@ async def chat_stream(
             user_message = ConversationMessage(
                 conversation_id=conversation.id,
                 role="user",
-                content=request.message,
+                content=payload.message,
             )
             assistant_message = ConversationMessage(
                 conversation_id=conversation.id,
@@ -859,7 +886,7 @@ async def chat_stream(
             logger.exception(
                 "Chat stream failed for user_id=%s conversation_id=%s",
                 getattr(user, "id", None),
-                request.conversation_id,
+                payload.conversation_id,
             )
             lowered = str(e).lower()
             if "credit balance is too low" in lowered:

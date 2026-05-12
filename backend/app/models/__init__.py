@@ -13,6 +13,7 @@ from app.models.context import ContextFile
 from app.models.integration import Integration, IntegrationSync
 from app.models.local_duckdb import LocalDuckDB, LocalDuckDBTable
 from app.models.report import Report, ReportItem, ReportSchedule
+from app.models.app_setting import AppSetting
 
 __all__ = [
     "Organization",
@@ -36,4 +37,5 @@ __all__ = [
     "Report",
     "ReportItem",
     "ReportSchedule",
+    "AppSetting",
 ]

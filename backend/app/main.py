@@ -14,7 +14,7 @@ from app.core.config import (
     ALLOWED_ORIGINS, DATABASE_URL, DISABLE_AUTH, LOCAL_DUCKDB_DIR,
 )
 from app.core.rate_limit import limiter
-from app.api import health, warehouses, conversations, feedback, usage, admin, account, demo, visualizations, salesforce, files, changelog, context, integrations, local_duckdb, reports, organization
+from app.api import health, warehouses, conversations, feedback, usage, admin, account, demo, visualizations, salesforce, files, changelog, context, integrations, local_duckdb, reports, organization, settings as settings_api
 from app.services import scheduler_service
 
 logger = logging.getLogger(__name__)
@@ -109,6 +109,7 @@ app.include_router(integrations.router)
 app.include_router(local_duckdb.router)
 app.include_router(reports.router)
 app.include_router(organization.router)
+app.include_router(settings_api.router)
 
 
 if __name__ == "__main__":

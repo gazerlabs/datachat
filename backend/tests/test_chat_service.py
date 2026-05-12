@@ -102,8 +102,18 @@ class TestBuildSystemPrompt:
 
 
 class TestCallClaudeWithTools:
-    @patch("app.services.chat_service.async_anthropic_client")
-    async def test_end_turn_returns_text(self, mock_client):
+    """The Anthropic client is now injected at the call site rather than a
+    module-level singleton, so tests build a MagicMock and pass it directly."""
+
+    def _mock_client(self, response_or_responses):
+        client = MagicMock()
+        if isinstance(response_or_responses, list):
+            client.messages.create = AsyncMock(side_effect=response_or_responses)
+        else:
+            client.messages.create = AsyncMock(return_value=response_or_responses)
+        return client
+
+    async def test_end_turn_returns_text(self):
         from app.services.chat_service import call_claude_with_tools
 
         mock_text_block = MagicMock()
@@ -115,12 +125,12 @@ class TestCallClaudeWithTools:
         mock_response.content = [mock_text_block]
         mock_response.usage.input_tokens = 100
         mock_response.usage.output_tokens = 50
-        mock_client.messages.create = AsyncMock(return_value=mock_response)
 
         executor = MagicMock()
         result = await call_claude_with_tools(
             messages=[{"role": "user", "content": "test"}],
             system_prompt="You are a data analyst.",
+            anthropic_client=self._mock_client(mock_response),
             executor=executor,
         )
         text, inp, out, last_sql, tool_count = result
@@ -129,8 +139,7 @@ class TestCallClaudeWithTools:
         assert out == 50
         assert tool_count == 0
 
-    @patch("app.services.chat_service.async_anthropic_client")
-    async def test_tool_use_loop(self, mock_client):
+    async def test_tool_use_loop(self):
         from app.services.chat_service import call_claude_with_tools
 
         # First call: tool_use
@@ -158,14 +167,13 @@ class TestCallClaudeWithTools:
         resp2.usage.input_tokens = 80
         resp2.usage.output_tokens = 30
 
-        mock_client.messages.create = AsyncMock(side_effect=[resp1, resp2])
-
         executor = AsyncMock()
         executor.execute_sql.return_value = "| result |\n| 1 |"
 
         result = await call_claude_with_tools(
             messages=[{"role": "user", "content": "run query"}],
             system_prompt="analyst",
+            anthropic_client=self._mock_client([resp1, resp2]),
             executor=executor,
         )
         text, inp, out, last_sql, tool_count = result
@@ -175,14 +183,14 @@ class TestCallClaudeWithTools:
         assert tool_count == 1
         assert last_sql == "| result |\n| 1 |"
 
-    @patch("app.services.chat_service.async_anthropic_client")
-    async def test_no_tools_raises(self, mock_client):
+    async def test_no_tools_raises(self):
         from app.services.chat_service import call_claude_with_tools
 
         with pytest.raises(ValueError, match="No tools available"):
             await call_claude_with_tools(
                 messages=[{"role": "user", "content": "hi"}],
                 system_prompt="test",
+                anthropic_client=MagicMock(),
             )
 
 

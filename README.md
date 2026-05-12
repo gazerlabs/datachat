@@ -8,10 +8,9 @@ Open-source, AI-powered analytics. Connect a data warehouse (or upload a file), 
 > ```bash
 > git clone https://github.com/gazerlabs/datachat
 > cd datachat && cp backend/.env.example backend/.env && cp frontend/.env.example frontend/.env.development
-> # Fill in ANTHROPIC_API_KEY (and optionally CLERK_*) in backend/.env
 > (cd backend && uv sync && uv run alembic upgrade head && uv run uvicorn app.main:app --reload --port 8000) &
 > (cd frontend && npm install && npm run dev)
-> # Visit http://localhost:8080
+> # Visit http://localhost:8080 → Settings → paste your Anthropic API key
 > ```
 
 ---
@@ -135,7 +134,9 @@ cd datachat
 
 # Backend
 cp backend/.env.example backend/.env
-# Edit backend/.env — at minimum set ANTHROPIC_API_KEY and DISABLE_AUTH=true for local dev
+# .env.example already sets DISABLE_AUTH=true so you can sign in as dev_user
+# without configuring Clerk. The placeholder ANTHROPIC_API_KEY is fine here —
+# you'll paste a real key into Settings after boot.
 cd backend
 uv sync
 uv run alembic upgrade head
@@ -148,7 +149,7 @@ npm install
 npm run dev
 ```
 
-Visit http://localhost:8080. With `DISABLE_AUTH=true` you'll be signed in as a built-in `dev_user`.
+Visit http://localhost:8080. With `DISABLE_AUTH=true` you'll be signed in as a built-in `dev_user`. Open **Settings → Anthropic API key**, paste your key (`sk-ant-...`), hit **Save** — the backend validates it against Anthropic and you can start chatting. No restart needed.
 
 ## Setting up the LLM API key (Anthropic)
 
@@ -162,13 +163,19 @@ Datachat is built on Anthropic's Claude — **you bring your own API key**. Ther
 
 ### 2. Wire it into the backend
 
-Edit `backend/.env`:
+Two options. **Pick whichever fits your deployment** — the app reads the in-app value first and falls back to the env var.
+
+**Option A: In-app (recommended for self-hosters).** Boot the app without setting `ANTHROPIC_API_KEY`, sign in, open **Settings → Anthropic API key**, paste the key, hit **Save**. The backend validates the key against Anthropic before storing it (encrypted with `ENCRYPTION_KEY`), so a typo or expired key surfaces immediately instead of on the first chat. No restart. Replace or remove from the same UI later.
+
+**Option B: Env var (for Railway / Docker / k8s / CI).** Set `ANTHROPIC_API_KEY` in `backend/.env` or wherever your deployment manages secrets:
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Restart the backend. The key isn't validated at startup — it's used on the first chat request, so a typo will fail loudly when you actually ask a question rather than at boot.
+Restart the backend. The env var is only consulted when no in-app value is set, so once an admin has saved a key via the UI it takes over.
+
+> **First-time clone:** if `backend/.env` still contains the literal placeholder `sk-ant-...` from `.env.example`, the backend treats the env var as unset (rather than passing the placeholder to Anthropic and getting a confusing 401). Either edit the value or set the key in Settings.
 
 ### 3. Choose models (optional)
 
