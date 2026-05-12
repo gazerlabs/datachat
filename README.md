@@ -97,6 +97,9 @@ Datachat lets non-technical users query their data warehouse by typing questions
 <img width="1512" height="852" alt="Screenshot 2026-05-10 at 11 33 23 AM" src="https://github.com/user-attachments/assets/138644e2-f330-4279-a273-56073b70c3d8" />
 --
 <img width="1512" height="852" alt="Screenshot 2026-05-10 at 11 33 04 AM" src="https://github.com/user-attachments/assets/f105add1-ecaa-40bf-b916-b1e0f7f70f0c" />
+--
+<img width="766" height="585" alt="Screenshot 2026-05-11 at 10 58 06 PM" src="https://github.com/user-attachments/assets/33cf02c7-1f28-4bd2-b7cb-b75a365bc109" />
+
 
 ### Usage
 <img width="1512" height="845" alt="Screenshot 2026-05-10 at 11 33 58 AM" src="https://github.com/user-attachments/assets/79c20168-fe1a-4f5e-a0d9-3dbe1935eaee" />
