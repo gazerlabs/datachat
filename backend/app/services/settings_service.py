@@ -16,6 +16,7 @@ in-app onboarding flow instead of an opaque 401 from Anthropic.
 from __future__ import annotations
 
 import logging
+from datetime import timezone
 from typing import Optional
 
 from anthropic import AsyncAnthropic, AuthenticationError
@@ -105,12 +106,22 @@ def status(db: Session) -> dict:
     env_active = _env_key_is_real()
     effective_key = db_key or (ANTHROPIC_API_KEY if env_active else None)
 
+    # SQLAlchemy hands back naive datetimes here; both SQLite and Postgres
+    # store this column as UTC under the hood (server_default=NOW()). Tag
+    # the value as UTC explicitly so the frontend's `new Date(...)` parses
+    # it as UTC instead of local time and renders the right calendar day.
+    updated_at_iso: Optional[str] = None
+    if db_updated_at is not None:
+        if db_updated_at.tzinfo is None:
+            db_updated_at = db_updated_at.replace(tzinfo=timezone.utc)
+        updated_at_iso = db_updated_at.isoformat()
+
     return {
         "configured": db_key is not None,
         "source": "database" if db_key else ("env" if env_active else None),
         "effective": effective_key is not None,
         "masked": _mask(effective_key) if effective_key else None,
-        "updated_at": db_updated_at.isoformat() if db_updated_at else None,
+        "updated_at": updated_at_iso,
     }
 
 

@@ -10,16 +10,17 @@ import { Label } from "@/components/ui/label";
 import { api, ApiError, AnthropicKeyStatus } from "@/lib/api";
 
 function formatSetDate(iso: string): string {
-  // Renders e.g. "May 11, 2026" using the browser's locale, falling back to
-  // the raw ISO timestamp if Date can't parse it (shouldn't happen — the
-  // backend hands us an isoformat() string).
+  // Render as YYYY-MM-DD in the user's local timezone. Backend tags the
+  // value as UTC (`+00:00`/`Z` suffix), so `new Date(iso)` lands on the
+  // correct instant and getFullYear/Month/Date return the local calendar
+  // day — important when the UTC clock has already crossed midnight but
+  // the user's local clock hasn't.
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 /**
