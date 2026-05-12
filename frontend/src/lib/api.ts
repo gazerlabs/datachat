@@ -403,6 +403,7 @@ export interface AnthropicKeyStatus {
   effective: boolean;
   source: "database" | "env" | null;
   masked: string | null;
+  updated_at: string | null;  // ISO 8601 — present only for DB-stored keys
 }
 
 async function fetchStreamWithAuth(endpoint: string, options: RequestInit = {}, signal?: AbortSignal): Promise<Response> {

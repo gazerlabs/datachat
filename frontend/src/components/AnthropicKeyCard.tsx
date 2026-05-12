@@ -9,6 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, ApiError, AnthropicKeyStatus } from "@/lib/api";
 
+function formatSetDate(iso: string): string {
+  // Renders e.g. "May 11, 2026" using the browser's locale, falling back to
+  // the raw ISO timestamp if Date can't parse it (shouldn't happen — the
+  // backend hands us an isoformat() string).
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 /**
  * In-app Anthropic key configuration. Lives on the Settings page so a
  * self-hoster can paste their key without editing .env. Admin-only behind the
@@ -87,7 +100,11 @@ export function AnthropicKeyCard() {
                     {status.masked}
                   </code>{" "}
                   <span className="text-muted-foreground">
-                    ({status.source === "database" ? "set in Settings" : "from ANTHROPIC_API_KEY env var"})
+                    ({status.source === "database" && status.updated_at
+                      ? `set on ${formatSetDate(status.updated_at)}`
+                      : status.source === "database"
+                        ? "set in Settings"
+                        : "from ANTHROPIC_API_KEY env var"})
                   </span>
                 </span>
               ) : (

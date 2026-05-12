@@ -59,6 +59,7 @@ class TestStatus:
             "effective": False,
             "source": None,
             "masked": None,
+            "updated_at": None,
         }
 
     def test_env_only_status(self, db_session):
@@ -83,6 +84,7 @@ class TestStatus:
         assert s["effective"] is True
         assert s["source"] == "database"
         assert s["masked"].endswith("aaaa")
+        assert s["updated_at"] is not None  # ISO timestamp string
 
 
 class TestSaveValidation:

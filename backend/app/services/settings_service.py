@@ -92,7 +92,16 @@ def require_anthropic_key(db: Session) -> str:
 
 def status(db: Session) -> dict:
     """Shape consumed by GET /api/settings/anthropic-key."""
-    db_key = get_anthropic_key_from_db(db)
+    row = db.query(AppSetting).filter(AppSetting.key == ANTHROPIC_KEY_SETTING).first()
+    db_key: Optional[str] = None
+    db_updated_at = None
+    if row is not None:
+        try:
+            db_key = _unwrap(row.value_encrypted)
+            db_updated_at = row.updated_at
+        except Exception:
+            logger.exception("Failed to decrypt stored Anthropic key")
+
     env_active = _env_key_is_real()
     effective_key = db_key or (ANTHROPIC_API_KEY if env_active else None)
 
@@ -101,6 +110,7 @@ def status(db: Session) -> dict:
         "source": "database" if db_key else ("env" if env_active else None),
         "effective": effective_key is not None,
         "masked": _mask(effective_key) if effective_key else None,
+        "updated_at": db_updated_at.isoformat() if db_updated_at else None,
     }
 
 
