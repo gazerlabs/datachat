@@ -1080,7 +1080,6 @@ export default function ChatPage() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col">
-        <MissingAnthropicKeyBanner />
         {/* Header */}
         <header className="h-14 border-b flex items-center justify-between px-4">
           <div className="flex items-center gap-2">
@@ -1206,6 +1205,7 @@ export default function ChatPage() {
           </div>
         </header>
 
+        <MissingAnthropicKeyBanner />
 
         {/* Welcome screens - centered */}
         {isLoadingWarehouses ? (

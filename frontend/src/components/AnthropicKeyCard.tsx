@@ -60,7 +60,7 @@ export function AnthropicKeyCard() {
   return (
     <Card className="mb-8">
       <CardHeader>
-        <CardTitle>API key</CardTitle>
+        <CardTitle>LLM API Key</CardTitle>
         <CardDescription>
           Your{" "}
           <a
@@ -71,10 +71,8 @@ export function AnthropicKeyCard() {
           >
             Anthropic API key
           </a>{" "}
-          powers every chat. Paste it once here — no `.env` editing or
-          backend restart needed. Keys are validated against Anthropic
-          before saving and stored encrypted on the server. Replace any
-          time; the new key takes effect on the next chat message.
+          powers every chat. Paste it once here and you're done — no `.env`
+          editing or backend restart needed.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -140,6 +138,11 @@ export function AnthropicKeyCard() {
                   </Button>
                 )}
               </div>
+              <p className="text-xs text-muted-foreground">
+                Keys are validated against Anthropic before saving and stored
+                encrypted on the server. Replace any time — the new key takes
+                effect on the next chat message.
+              </p>
             </div>
           </>
         )}
