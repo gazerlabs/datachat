@@ -654,9 +654,6 @@ export default function SettingsPage() {
       </header>
 
       <main className="container max-w-3xl mx-auto py-8 px-4">
-        {/* Anthropic API key (admin only — card hides itself for non-admins) */}
-        <AnthropicKeyCard />
-
         {/* Data Sources Section */}
         <Card className="mb-8">
           <CardHeader className="flex flex-row items-center justify-between">
@@ -1457,6 +1454,9 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* API key (admin only — card hides itself for non-admins) */}
+        <AnthropicKeyCard />
 
         {/* Plan Section — hidden when billing isn't configured (self-hosted) */}
         {billingEnabled && (

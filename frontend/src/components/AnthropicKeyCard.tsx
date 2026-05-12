@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Key, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -60,10 +60,7 @@ export function AnthropicKeyCard() {
   return (
     <Card className="mb-8">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Key className="h-5 w-5" />
-          Anthropic API key
-        </CardTitle>
+        <CardTitle>API key</CardTitle>
         <CardDescription>
           Your{" "}
           <a
@@ -74,8 +71,10 @@ export function AnthropicKeyCard() {
           >
             Anthropic API key
           </a>{" "}
-          powers every chat. Paste it once here and you're done — no `.env`
-          editing or backend restart needed.
+          powers every chat. Paste it once here — no `.env` editing or
+          backend restart needed. Keys are validated against Anthropic
+          before saving and stored encrypted on the server. Replace any
+          time; the new key takes effect on the next chat message.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -141,11 +140,6 @@ export function AnthropicKeyCard() {
                   </Button>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Keys are validated against Anthropic before saving and stored
-                encrypted on the server. Replace any time — the new key takes
-                effect on the next chat message.
-              </p>
             </div>
           </>
         )}

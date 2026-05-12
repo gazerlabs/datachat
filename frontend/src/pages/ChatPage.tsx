@@ -5,6 +5,7 @@ import { api, ApiError, Conversation, Message, VisualizationConfig, FileSessionR
 import { useStreamingChat } from "@/hooks/use-streaming-chat";
 import ResponseMetadata, { formatTimestamp } from "@/components/ResponseMetadata";
 import UsageBanner from "@/components/UsageBanner";
+import { MissingAnthropicKeyBanner } from "@/components/MissingAnthropicKeyBanner";
 import InlineVisualization from "@/components/InlineVisualization";
 import SaveVisualizationModal from "@/components/SaveVisualizationModal";
 
@@ -1079,6 +1080,7 @@ export default function ChatPage() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col">
+        <MissingAnthropicKeyBanner />
         {/* Header */}
         <header className="h-14 border-b flex items-center justify-between px-4">
           <div className="flex items-center gap-2">
