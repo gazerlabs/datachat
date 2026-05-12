@@ -6,6 +6,9 @@ gets a "Demo: RetailFlow" warehouse auto-attached and uses the regular chat
 flow.
 """
 
+import html
+import logging
+
 import httpx
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -19,6 +22,8 @@ from app.schemas.demo import (
     MaturityAssessmentRequest, MaturityAssessmentResponse,
     ConsultingInquiryRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["demo"])
 
@@ -89,6 +94,13 @@ async def submit_consulting_inquiry(
     db.refresh(inquiry)
 
     if RESEND_API_KEY:
+        # Escape every interpolated user input — the recipient is a human reading
+        # this in a webmail client and `<img src=x onerror=...>` in the message
+        # body would otherwise render as a real tag.
+        safe_name = html.escape(request.name or "")
+        safe_email = html.escape(request.email or "")
+        safe_company = html.escape(request.company or "Not provided")
+        safe_message = html.escape(request.message or "No message provided")
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -103,18 +115,21 @@ async def submit_consulting_inquiry(
                         "reply_to": request.email,
                         "subject": "Datachat Consulting Inquiry",
                         "html": f"""
-                        <p><strong>Name:</strong> {request.name}</p>
-                        <p><strong>Email:</strong> {request.email}</p>
-                        <p><strong>Company:</strong> {request.company or 'Not provided'}</p>
+                        <p><strong>Name:</strong> {safe_name}</p>
+                        <p><strong>Email:</strong> {safe_email}</p>
+                        <p><strong>Company:</strong> {safe_company}</p>
                         <p><strong>Message:</strong></p>
-                        <p>{request.message or 'No message provided'}</p>
+                        <p>{safe_message}</p>
                         """,
                     },
                     timeout=10.0,
                 )
                 if response.status_code != 200:
-                    print(f"Resend API error: {response.status_code} - {response.text}")
-        except Exception as e:
-            print(f"Failed to send email notification: {e}")
+                    logger.error(
+                        "Resend API error sending consulting inquiry: %s - %s",
+                        response.status_code, response.text,
+                    )
+        except Exception:
+            logger.exception("Failed to send consulting-inquiry email")
 
     return {"success": True, "id": inquiry.id}
