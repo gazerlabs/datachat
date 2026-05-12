@@ -187,11 +187,19 @@ def client(app_with_db):
 
 @pytest.fixture()
 def authed_client(app_with_db):
-    """TestClient with auth bypass via DISABLE_AUTH."""
+    """TestClient authenticated as an admin dev_user.
+
+    Overrides `get_current_user` to bypass JWT validation regardless of the
+    DISABLE_AUTH env var. Without this override, behavior shifted between
+    local runs (where a developer's .env can flip DISABLE_AUTH on) and CI
+    (where DISABLE_AUTH is intentionally left off so the auth-required
+    suite is meaningful).
+    """
     from httpx import ASGITransport, AsyncClient
+    from app.core.dependencies import get_current_user
     app, TestSession = app_with_db
 
-    # Create dev_user in the test DB so DISABLE_AUTH path works
+    # Create dev_user in the test DB so the override returns a real row
     session = TestSession()
     existing = session.query(User).filter(User.id == "dev_user").first()
     if not existing:
@@ -206,4 +214,14 @@ def authed_client(app_with_db):
         session.commit()
     session.close()
 
+    def _override_current_user():
+        # Yield a fresh dev_user attached to the test session so admin checks
+        # see is_admin=True without making a real JWT round-trip.
+        s = TestSession()
+        try:
+            yield s.query(User).filter(User.id == "dev_user").first()
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_current_user] = _override_current_user
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
